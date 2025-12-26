@@ -1,0 +1,16 @@
+# PHP
+/vendor/
+/node_modules/
+
+# Config sensitif
+config.php
+.env
+
+# Logs & cache
+*.log
+cache/
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db

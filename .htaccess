@@ -1,0 +1,33 @@
+# Video Downloader .htaccess
+RewriteEngine On
+RewriteBase /video-downloader/
+
+# Redirect to index.php if file doesn't exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?/$1 [L,QSA]
+
+# Security: Protect config files
+<FilesMatch "^(config\.php|\.htaccess)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Security: No directory listing
+Options -Indexes
+
+# CORS Headers untuk API (jika diperlukan)
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "https://genieacs.bmkv.net"
+    Header set Access-Control-Allow-Credentials "true"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
+
+# PHP Settings
+<IfModule mod_php.c>
+    php_value upload_max_filesize 500M
+    php_value post_max_size 500M
+    php_value max_execution_time 300
+    php_value memory_limit 256M
+</IfModule>
