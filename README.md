@@ -58,7 +58,7 @@ sudo apt install -y python3 python3-pip
 sudo pip3 install -U yt-dlp
 ```
 
-Verify installation:
+- Verify installation:
 ```bash
 yt-dlp --version
 ```
@@ -84,8 +84,6 @@ sudo systemctl status apache2
 cp config.example.php config.php
 ```
 - Edit config.php to match your environment (app name, paths, limits, etc).
-
-⚠️ Do NOT commit config.php to GitHub.
 
 ### 6️⃣ Set Permissions (Important)
 ```bash
