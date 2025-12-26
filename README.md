@@ -50,7 +50,7 @@ Make sure your server meets the following requirements:
 ```bash
 git clone https://github.com/Masamune21-dev/video-downloader.git
 cd video-downloader
-2️⃣ Install yt-dlp
+### 2️⃣ Install yt-dlp
 bash
 Copy code
 sudo apt update
@@ -61,18 +61,18 @@ Verify installation:
 bash
 Copy code
 yt-dlp --version
-3️⃣ Install FFmpeg (Recommended)
+### 3️⃣ Install FFmpeg (Recommended)
 bash
 Copy code
 sudo apt install -y ffmpeg
-4️⃣ Check PHP & Apache
+### 4️⃣ Check PHP & Apache
 bash
 Copy code
 php -v
 sudo systemctl status apache2
 Make sure PHP CLI and Apache are running correctly.
 
-5️⃣ Application Configuration
+### 5️⃣ Application Configuration
 Copy the example configuration file:
 
 bash
@@ -82,7 +82,7 @@ Edit config.php to match your environment (app name, paths, limits, etc).
 
 ⚠️ Do NOT commit config.php to GitHub.
 
-6️⃣ Set Permissions (Important)
+### 6️⃣ Set Permissions (Important)
 bash
 Copy code
 sudo chown -R www-data:www-data /var/www/html/video-downloader
