@@ -73,42 +73,42 @@ sudo apt install -y ffmpeg
 Copy code
 php -v
 sudo systemctl status apache2
+```
+
 Make sure PHP CLI and Apache are running correctly.
 
-5️⃣ Application Configuration
-Copy the example configuration file:
+###5️⃣ Application Configuration
 
-bash
-Copy code
+Copy the example configuration file:
+```bash
 cp config.example.php config.php
+```
 Edit config.php to match your environment (app name, paths, limits, etc).
 
 ⚠️ Do NOT commit config.php to GitHub.
 
-6️⃣ Set Permissions (Important)
-bash
-Copy code
+### 6️⃣ Set Permissions (Important)
+```bash
 sudo chown -R www-data:www-data /var/www/html/video-downloader
 sudo chmod -R 755 /var/www/html/video-downloader
+```
 If you use download/cache directories:
-
-bash
-Copy code
+```bash
 chmod -R 775 downloads cache
-7️⃣ Access via Browser
+```
+
+### 7️⃣ Access via Browser
 Local
 
-arduino
-Copy code
+```arduino
 http://localhost/video-downloader
+```
 Domain
-
-arduino
-Copy code
+```arduino
 https://yourdomain.com/video-downloader
-📁 Project Structure
-text
-Copy code
+```
+#### 📁 Project Structure
+```text
 video-downloader/
 ├── assets/
 │   ├── css/
@@ -119,7 +119,8 @@ video-downloader/
 ├── config.example.php
 ├── .gitignore
 └── README.md
-⚙️ How It Works
+```
+#### ⚙️ How It Works
 User submits a video URL
 
 PHP validates the input
@@ -132,7 +133,7 @@ Selected format is downloaded / merged
 
 File is served to the user
 
-🛡️ Security Notes
+#### 🛡️ Security Notes
 Never expose config.php publicly
 
 Restrict internal directories using .htaccess
