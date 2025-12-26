@@ -185,13 +185,10 @@ You are free to modify and adapt it for your own environment.
 #### 🤝 Contributing
 Contributions are welcome!
 
-Fork the repository
-
-Create a new branch
-
-Commit your changes
-
-Open a Pull Request
+- Fork the repository
+- Create a new branch
+- Commit your changes
+- Open a Pull Request
 
 #### ⭐ Support
 If this project helps you, consider giving it a ⭐ on GitHub!
