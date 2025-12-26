@@ -77,7 +77,7 @@ sudo systemctl status apache2
 
 Make sure PHP CLI and Apache are running correctly.
 
-###5️⃣ Application Configuration
+### 5️⃣ Application Configuration
 
 Copy the example configuration file:
 ```bash
@@ -144,7 +144,7 @@ Limit file size and execution time
 
 Validate all user input
 
-⚠️ Legal Disclaimer
+#### ⚠️ Legal Disclaimer
 This project is intended for educational and personal use only.
 
 You are responsible for complying with:
@@ -155,33 +155,34 @@ Platform terms of service
 
 The developer is NOT responsible for misuse of this application.
 
-🧪 Troubleshooting
+#### 🧪 Troubleshooting
 ❌ yt-dlp not found
-bash
-Copy code
+```bash
 which yt-dlp
+```
 If missing:
-
-bash
-Copy code
+```bash
 sudo pip3 install -U yt-dlp
-❌ Permission denied
-bash
-Copy code
+```
+
+#### ❌ Permission denied
+```bash
 sudo chown -R www-data:www-data video-downloader
 sudo chmod -R 755 video-downloader
-❌ 500 Internal Server Error
-Check Apache error log:
+```
 
-bash
-Copy code
+#### ❌ 500 Internal Server Error
+Check Apache error log:
+```bash
 sudo tail -f /var/log/apache2/error.log
-📜 License
+```
+
+#### 📜 License
 This project is provided as-is for learning and personal use.
 
 You are free to modify and adapt it for your own environment.
 
-🤝 Contributing
+#### 🤝 Contributing
 Contributions are welcome!
 
 Fork the repository
@@ -192,5 +193,5 @@ Commit your changes
 
 Open a Pull Request
 
-⭐ Support
+#### ⭐ Support
 If this project helps you, consider giving it a ⭐ on GitHub!
