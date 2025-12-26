@@ -75,15 +75,15 @@ php -v
 sudo systemctl status apache2
 ```
 
-Make sure PHP CLI and Apache are running correctly.
+- Make sure PHP CLI and Apache are running correctly.
 
 ### 5️⃣ Application Configuration
 
-Copy the example configuration file:
+- Copy the example configuration file:
 ```bash
 cp config.example.php config.php
 ```
-Edit config.php to match your environment (app name, paths, limits, etc).
+- Edit config.php to match your environment (app name, paths, limits, etc).
 
 ⚠️ Do NOT commit config.php to GitHub.
 
@@ -92,25 +92,26 @@ Edit config.php to match your environment (app name, paths, limits, etc).
 sudo chown -R www-data:www-data /var/www/html/video-downloader
 sudo chmod -R 755 /var/www/html/video-downloader
 ```
-If you use download/cache directories:
+- If you use download/cache directories:
 ```bash
 chmod -R 775 downloads cache
 ```
 
 ### 7️⃣ Access via Browser
-Local
+- Local
 
 ```arduino
 http://localhost/video-downloader
 ```
-Domain
+- Domain
 ```arduino
 https://yourdomain.com/video-downloader
 ```
 
 ---
 
-#### 📁 Project Structure
+## 📁 Project Structure
+
 ```text
 video-downloader/
 ├── assets/
@@ -124,20 +125,28 @@ video-downloader/
 ├── .gitignore
 └── README.md
 ```
-#### ⚙️ How It Works
-User submits a video URL
 
-PHP validates the input
+---
 
-PHP executes yt-dlp via CLI
+## ⚙️ How It Works
 
-yt-dlp fetches available formats
+- User submits a video URL
 
-Selected format is downloaded / merged
+- PHP validates the input
 
-File is served to the user
+- PHP executes yt-dlp via CLI
 
-#### 🛡️ Security Notes
+- yt-dlp fetches available formats
+
+- Selected format is downloaded / merged
+
+- File is served to the user
+
+---
+
+
+### 🛡️ Security Notes
+
 - Never expose config.php publicly
 
 - Restrict internal directories using .htaccess
@@ -148,7 +157,10 @@ File is served to the user
 
 - Validate all user input
 
-#### ⚠️ Legal Disclaimer
+---
+
+## ⚠️ Legal Disclaimer
+
 - This project is intended for educational and personal use only.
 
 - You are responsible for complying with:
@@ -159,8 +171,10 @@ File is served to the user
 
 - The developer is NOT responsible for misuse of this application.
 
-#### 🧪 Troubleshooting
-❌ yt-dlp not found
+---
+
+## 🧪 Troubleshooting
+### ❌ yt-dlp not found
 ```bash
 which yt-dlp
 ```
@@ -169,24 +183,28 @@ which yt-dlp
 sudo pip3 install -U yt-dlp
 ```
 
-#### ❌ Permission denied
+### ❌ Permission denied
 ```bash
 sudo chown -R www-data:www-data video-downloader
 sudo chmod -R 755 video-downloader
 ```
 
-#### ❌ 500 Internal Server Error
+### ❌ 500 Internal Server Error
 - Check Apache error log:
 ```bash
 sudo tail -f /var/log/apache2/error.log
 ```
 
-#### 📜 License
-This project is provided as-is for learning and personal use.
+---
 
-You are free to modify and adapt it for your own environment.
+## 📜 License
+- This project is provided as-is for learning and personal use.
 
-#### 🤝 Contributing
+- You are free to modify and adapt it for your own environment.
+
+---
+
+## 🤝 Contributing
 Contributions are welcome!
 
 - Fork the repository
@@ -194,5 +212,5 @@ Contributions are welcome!
 - Commit your changes
 - Open a Pull Request
 
-#### ⭐ Support
+## ⭐ Support
 If this project helps you, consider giving it a ⭐ on GitHub!
