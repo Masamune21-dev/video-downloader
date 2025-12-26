@@ -107,6 +107,9 @@ Domain
 ```arduino
 https://yourdomain.com/video-downloader
 ```
+
+---
+
 #### 📁 Project Structure
 ```text
 video-downloader/
