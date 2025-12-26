@@ -160,7 +160,7 @@ The developer is NOT responsible for misuse of this application.
 ```bash
 which yt-dlp
 ```
-If missing:
+- If missing:
 ```bash
 sudo pip3 install -U yt-dlp
 ```
@@ -172,7 +172,7 @@ sudo chmod -R 755 video-downloader
 ```
 
 #### ❌ 500 Internal Server Error
-Check Apache error log:
+- Check Apache error log:
 ```bash
 sudo tail -f /var/log/apache2/error.log
 ```
