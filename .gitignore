@@ -14,3 +14,9 @@ tmp/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime / temporary files
+temp/
+*.mp4
+*.pid
+*.json
