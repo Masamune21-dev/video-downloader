@@ -2,7 +2,7 @@
 define('APP_NAME', 'VideoDownloader Pro');
 define('APP_VERSION', '3.0');
 
-define('BASE_URL', 'https://genieacs.bmkv.net/video-downloader/');
+define('BASE_URL', 'http://localhost/video-downloader/');
 define('YTDLP_BIN', '/usr/local/bin/yt-dlp');
 
 // Path untuk file besar (2GB+ support)
