@@ -49,23 +49,27 @@ Make sure your server meets the following requirements:
 ```bash
 git clone https://github.com/Masamune21-dev/video-downloader.git
 cd video-downloader
-2️⃣ Install yt-dlp
-bash
-Copy code
+```
+
+### 2️⃣ Install yt-dlp
+```bash
 sudo apt update
 sudo apt install -y python3 python3-pip
 sudo pip3 install -U yt-dlp
-Verify installation:
+```
 
-bash
-Copy code
+Verify installation:
+```bash
 yt-dlp --version
-3️⃣ Install FFmpeg (Recommended)
-bash
-Copy code
+```
+
+### 3️⃣ Install FFmpeg (Recommended)
+```bash
 sudo apt install -y ffmpeg
-4️⃣ Check PHP & Apache
-bash
+```
+
+### 4️⃣ Check PHP & Apache
+```bash
 Copy code
 php -v
 sudo systemctl status apache2
