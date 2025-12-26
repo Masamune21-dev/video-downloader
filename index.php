@@ -70,12 +70,8 @@ require_once 'config.php';
             <section class="hero-section">
                 <div class="hero-content glass-card">
                     <h2 class="hero-title">
-                        <span class="gradient-text">Download Video</span>
-                        <span class="hero-highlight">Dalam Kualitas HD</span>
+                        <span class="gradient-text">Download Video Dalam Kualitas HD</span>
                     </h2>
-                    <p class="hero-description">
-                        Download video dari 100+ platform termasuk YouTube, TikTok, Instagram, Facebook dengan kualitas hingga 4K. Cepat, aman, dan tanpa batasan!
-                    </p>
                     
                     <!-- Download Form -->
                     <div class="download-form glass-inner">
