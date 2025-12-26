@@ -114,6 +114,7 @@ video-downloader/
 │   ├── css/
 │   ├── js/
 │   └── favicon.ico
+├── temp/
 ├── index.php
 ├── config.php
 ├── config.example.php
@@ -134,26 +135,26 @@ Selected format is downloaded / merged
 File is served to the user
 
 #### 🛡️ Security Notes
-Never expose config.php publicly
+- Never expose config.php publicly
 
-Restrict internal directories using .htaccess
+- Restrict internal directories using .htaccess
 
-Use HTTPS (recommended)
+- Use HTTPS (recommended)
 
-Limit file size and execution time
+- Limit file size and execution time
 
-Validate all user input
+- Validate all user input
 
 #### ⚠️ Legal Disclaimer
-This project is intended for educational and personal use only.
+- This project is intended for educational and personal use only.
 
-You are responsible for complying with:
+- You are responsible for complying with:
 
-Copyright laws
+- Copyright laws
 
-Platform terms of service
+- Platform terms of service
 
-The developer is NOT responsible for misuse of this application.
+- The developer is NOT responsible for misuse of this application.
 
 #### 🧪 Troubleshooting
 ❌ yt-dlp not found
