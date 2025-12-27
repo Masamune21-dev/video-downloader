@@ -1,36 +1,45 @@
 <?php
 
-$dir = __DIR__ . '/temp/files/';
-$maxAge = 3600;   // 1 jam
-$maxFiles = 10;   // maksimal 20 file
+$directories = [
+    __DIR__ . '/temp/files/',
+    __DIR__ . '/temp/progress/'
+];
 
-// Ambil semua file (bukan folder)
-$files = array_filter(glob($dir . '*.*'), 'is_file');
+$maxAge   = 3600; // 1 jam
+$maxFiles = 10;   // maksimal 10 file
 
-/* ===============================
-   RULE 1: FILE TERLALU BANYAK
-   =============================== */
-if (count($files) > $maxFiles) {
+foreach ($directories as $dir) {
 
-    foreach ($files as $file) {
+    if (!is_dir($dir)) continue;
 
-        // Jangan hapus file sementara
-        if (str_ends_with($file, '.part')) continue;
+    // Ambil semua file (bukan folder)
+    $files = array_filter(glob($dir . '*'), 'is_file');
 
-        @unlink($file);
+    /* ===============================
+       RULE 1: FILE TERLALU BANYAK
+       =============================== */
+    if (count($files) > $maxFiles) {
+        foreach ($files as $file) {
+
+            // Jangan hapus file sementara (.part)
+            if (str_ends_with($file, '.part')) continue;
+
+            @unlink($file);
+        }
+
+        // lanjut ke folder berikutnya
+        continue;
     }
 
-    exit; // STOP, tidak perlu cek umur
-}
+    /* ===============================
+       RULE 2: FILE TERLALU LAMA
+       =============================== */
+    foreach ($files as $file) {
 
-/* ===============================
-   RULE 2: FILE TERLALU LAMA
-   =============================== */
-foreach ($files as $file) {
+        if (str_ends_with($file, '.part')) continue;
 
-    if (str_ends_with($file, '.part')) continue;
-
-    if (time() - filemtime($file) > $maxAge) {
-        @unlink($file);
+        if (time() - filemtime($file) > $maxAge) {
+            @unlink($file);
+        }
     }
 }

@@ -8,36 +8,71 @@ require_once 'config.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo APP_NAME; ?> - Download Video HD Gratis</title>
-    <meta name="description" content="Download video dari YouTube, TikTok, Instagram, Facebook & 100+ platform dalam kualitas HD hingga 4K">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="<?php echo full_url('assets/favicon.ico'); ?>">
-    
-    <!-- Fonts -->
+    <meta name="description"
+        content="Download video dari YouTube, TikTok, Instagram, Facebook & 100+ platform dalam kualitas HD hingga 4K">
+
+    <!-- Fonts - Optimized -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    
-    <!-- Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Icons - Load only necessary -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        crossorigin="anonymous">
+
     <!-- Styles -->
     <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css'); ?>">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-    
+
     <!-- Theme Color -->
     <meta name="theme-color" content="#0f0f23">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Preload critical CSS -->
+    <link rel="preload" href="<?php echo full_url('assets/css/glass.css'); ?>" as="style">
+
+    <!-- Inline critical CSS untuk render cepat -->
+    <style>
+        /* Critical CSS untuk above-the-fold content */
+        .critical-hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .bg-gradient {
+            background: #0f0f23;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 12px;
+            width: 100%;
+        }
+    </style>
 </head>
 
 <body class="bg-gradient">
-    <!-- Animated Background -->
-    <div class="particles"></div>
-    
+    <!-- Animated Background - Disederhanakan -->
+    <div class="particles" id="particles"></div>
+
     <!-- Main Container -->
     <div class="app-container">
-        
+
         <!-- Header -->
         <header class="glass-header">
             <div class="header-content">
@@ -47,17 +82,13 @@ require_once 'config.php';
                     </div>
                     <div class="logo-text">
                         <h1 class="logo-title"><?php echo APP_NAME; ?></h1>
-                        <p class="logo-subtitle">Download Video HD • Unlimited • Free</p>
+                        <p class="logo-subtitle">Download Video HD • Free</p>
                     </div>
                 </div>
-                
+
                 <div class="header-actions">
-                    <button class="theme-toggle" id="themeToggle">
+                    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                         <i class="fas fa-moon"></i>
-                    </button>
-                    <button class="btn-support" onclick="showSupport()">
-                        <i class="fas fa-question-circle"></i>
-                        <span>Support</span>
                     </button>
                 </div>
             </div>
@@ -65,100 +96,61 @@ require_once 'config.php';
 
         <!-- Main Content -->
         <main class="main-content">
-            
-            <!-- Hero Section -->
-            <section class="hero-section">
-                <div class="hero-content glass-card">
-                    <h2 class="hero-title">
-                        <span class="gradient-text">Download Video Dalam Kualitas HD</span>
+
+            <!-- Download Section -->
+            <section class="download-section">
+                <div class="download-card glass-card">
+                    <h2 class="section-title">
+                        <span class="gradient-text">Download Video Gratis</span>
                     </h2>
-                    
+
                     <!-- Download Form -->
-                    <div class="download-form glass-inner">
-                        <form id="downloadForm" class="download-form-container">
+                    <div class="download-form">
+                        <form id="downloadForm" class="form-container">
                             <div class="form-group">
-                                <div class="input-label">
-                                    <i class="fas fa-link"></i>
-                                    <label for="videoUrl">URL Video</label>
-                                </div>
-                                <div class="input-with-actions">
-                                    <input type="url" id="videoUrl" name="videoUrl" 
-                                           placeholder="Contoh: https://youtube.com/watch?v=..." 
-                                           required autofocus>
-                                    <div class="input-actions">
-                                        <button type="button" class="btn-action paste-btn" id="pasteBtn" title="Tempel dari clipboard">
+                                <label for="videoUrl" class="form-label">
+                                    <i class="fas fa-link"></i> URL Video
+                                </label>
+                                <div class="input-group">
+                                    <input type="url" id="videoUrl" name="videoUrl"
+                                        placeholder="https://youtube.com/watch?v=..." required autocomplete="off">
+                                    <div class="input-buttons">
+                                        <button type="button" class="btn-icon" id="pasteBtn" title="Tempel">
                                             <i class="fas fa-paste"></i>
                                         </button>
-                                        <button type="button" class="btn-action clear-btn" id="clearBtn" title="Hapus">
+                                        <button type="button" class="btn-icon" id="clearBtn" title="Hapus">
                                             <i class="fas fa-times"></i>
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <div class="input-label">
-                                        <i class="fas fa-film"></i>
-                                        <label for="format">Format</label>
-                                    </div>
-                                    <div class="select-wrapper">
-                                        <select id="format" name="format" class="modern-select">
-                                            <option value="mp4">MP4 Video</option>
-                                            <option value="mp3">MP3 Audio</option>
-                                            <option value="webm">WebM Video</option>
-                                            <option value="mkv">MKV HD</option>
-                                        </select>
-                                        <i class="fas fa-chevron-down"></i>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <div class="input-label">
-                                        <i class="fas fa-hd"></i>
-                                        <label for="quality">Kualitas</label>
-                                    </div>
-                                    <div class="select-wrapper">
-                                        <select id="quality" name="quality" class="modern-select">
-                                            <option value="best">Auto (Terbaik)</option>
-                                            <option value="2160">4K Ultra HD</option>
-                                            <option value="1440">2K QHD</option>
-                                            <option value="1080">1080p Full HD</option>
-                                            <option value="720">720p HD</option>
-                                            <option value="480">480p</option>
-                                            <option value="360">360p</option>
-                                        </select>
-                                        <i class="fas fa-chevron-down"></i>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Platform Quick Buttons -->
-                            <div class="platform-quick">
-                                <div class="quick-label">
-                                    <i class="fas fa-bolt"></i>
-                                    <span>Platform Cepat:</span>
-                                </div>
-                                <div class="quick-buttons">
-                                    <button type="button" class="quick-btn youtube" data-url="https://youtube.com/">
+                            <!-- Platform Buttons -->
+                            <div class="platform-buttons">
+                                <p class="platform-label">Platform:</p>
+                                <div class="platform-tags">
+                                    <button type="button" class="platform-tag" data-platform="youtube">
                                         <i class="fab fa-youtube"></i> YouTube
                                     </button>
-                                    <button type="button" class="quick-btn tiktok" data-url="https://tiktok.com/">
+                                    <button type="button" class="platform-tag" data-platform="tiktok">
                                         <i class="fab fa-tiktok"></i> TikTok
                                     </button>
-                                    <button type="button" class="quick-btn instagram" data-url="https://instagram.com/">
+                                    <button type="button" class="platform-tag" data-platform="instagram">
                                         <i class="fab fa-instagram"></i> Instagram
                                     </button>
-                                    <button type="button" class="quick-btn facebook" data-url="https://facebook.com/">
+                                    <button type="button" class="platform-tag" data-platform="facebook">
                                         <i class="fab fa-facebook"></i> Facebook
+                                    </button>
+                                    <button type="button" class="platform-tag" data-platform="twitter">
+                                        <i class="fab fa-twitter"></i> Twitter
                                     </button>
                                 </div>
                             </div>
 
                             <button type="submit" class="btn-primary" id="submitBtn">
-                                <i class="fas fa-magic"></i>
+                                <i class="fas fa-search"></i>
                                 <span>Analisis Video</span>
-                                <div class="btn-loader"></div>
+                                <span class="btn-loader"></span>
                             </button>
                         </form>
                     </div>
@@ -167,98 +159,57 @@ require_once 'config.php';
 
             <!-- Results Section -->
             <section id="resultsSection" class="results-section" style="display: none;">
-                <div class="results-container glass-card">
+                <div class="results-card glass-card">
                     <div class="results-header">
                         <h3><i class="fas fa-file-video"></i> Hasil Analisis</h3>
-                        <button class="btn-close-results" onclick="closeResults()">
+                        <button class="btn-close" onclick="closeResults()" aria-label="Close">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
-                    
+
                     <div id="loading" class="loading-state">
-                        <div class="loading-animation">
-                            <div class="spinner"></div>
-                            <div class="spinner-ring"></div>
-                        </div>
-                        <div class="loading-content">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">
                             <h4>Menganalisis Video...</h4>
-                            <p>Sedang mengambil informasi dan kualitas tersedia</p>
-                            <div class="loading-progress">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="loadingProgress"></div>
-                                </div>
-                            </div>
+                            <p>Sedang mengambil informasi video</p>
                         </div>
                     </div>
 
                     <div id="result" class="results-content">
-                        <!-- Results will be loaded here -->
+                        <!-- Results akan dimuat di sini -->
                     </div>
                 </div>
             </section>
 
-            <!-- Features Grid -->
+            <!-- Features -->
             <section class="features-section">
                 <div class="section-header">
-                    <h2><i class="fas fa-star"></i> Keunggulan Kami</h2>
-                    <p>Mengapa memilih platform kami untuk download video</p>
+                    <h2><i class="fas fa-star"></i> Keunggulan</h2>
                 </div>
-                
+
                 <div class="features-grid">
-                    <div class="feature-card">
+                    <div class="feature-item">
                         <div class="feature-icon">
                             <i class="fas fa-bolt"></i>
                         </div>
-                        <h3>Super Cepat</h3>
-                        <p>Download dengan kecepatan optimal hingga 100 Mbps</p>
+                        <h3>Cepat</h3>
+                        <p>Download dengan kecepatan optimal</p>
                     </div>
-                    
-                    <div class="feature-card">
+
+                    <div class="feature-item">
                         <div class="feature-icon">
                             <i class="fas fa-shield-alt"></i>
                         </div>
-                        <h3>100% Aman</h3>
-                        <p>Tidak ada data yang disimpan, privasi terjamin</p>
+                        <h3>Aman</h3>
+                        <p>Privasi terjamin</p>
                     </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-infinity"></i>
-                        </div>
-                        <h3>Unlimited</h3>
-                        <p>Tidak ada batasan jumlah atau ukuran download</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-hd"></i>
-                        </div>
-                        <h3>Kualitas HD</h3>
-                        <p>Support hingga 4K UHD dan HDR content</p>
-                    </div>
-                </div>
-            </section>
 
-            <!-- Statistics -->
-            <section class="stats-section">
-                <div class="stats-container glass-card">
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-number">100+</div>
-                            <div class="stat-label">Platform Support</div>
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <span class="hd-badge">HD</span>
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-number">4K</div>
-                            <div class="stat-label">Max Quality</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">2GB</div>
-                            <div class="stat-label">File Size Limit</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">∞</div>
-                            <div class="stat-label">Daily Downloads</div>
-                        </div>
+                        <h3>HD Quality</h3>
+                        <p>Support hingga 4K</p>
                     </div>
                 </div>
             </section>
@@ -266,142 +217,109 @@ require_once 'config.php';
         </main>
 
         <!-- Footer -->
-        <footer class="glass-footer">
+        <footer class="footer">
+            <div class="footer-separator"></div>
             <div class="footer-content">
-                <div class="footer-brand">
+                <div class="footer-info">
                     <div class="footer-logo">
                         <i class="fas fa-bolt"></i>
                         <span><?php echo APP_NAME; ?></span>
                     </div>
-                    <p class="footer-tagline">Platform download video gratis untuk semua</p>
+                    <p class="footer-text">Download video gratis untuk semua platform</p>
                 </div>
-                
+
                 <div class="footer-links">
-                    <div class="link-group">
-                        <h4>Legal</h4>
-                        <a href="#" onclick="showDisclaimer()">Disclaimer</a>
-                        <a href="#" onclick="showPrivacy()">Privacy Policy</a>
-                        <a href="#" onclick="showTerms()">Terms of Service</a>
-                    </div>
-                    <div class="link-group">
-                        <h4>Support</h4>
-                        <a href="#" onclick="showContact()">Contact Us</a>
-                        <a href="#" onclick="showFAQ()">FAQ</a>
-                        <a href="#" onclick="showSupport()">Help Center</a>
-                    </div>
-                    <div class="link-group">
-                        <h4>Social</h4>
-                        <a href="#"><i class="fab fa-github"></i> GitHub</a>
-                        <a href="#"><i class="fab fa-twitter"></i> Twitter</a>
-                        <a href="#"><i class="fab fa-discord"></i> Discord</a>
-                    </div>
+                    <a href="#" onclick="showModal('supportModal')">Support</a>
+                    <a href="#" onclick="showModal('contactModal')">Contact</a>
+                    <a href="#" onclick="showModal('privacyModal')">Privacy</a>
                 </div>
-                
-                <div class="footer-bottom">
-                    <p>&copy; <?php echo date('Y'); ?> <?php echo APP_NAME; ?> v<?php echo APP_VERSION; ?></p>
-                    <p class="footer-notice">Untuk penggunaan pribadi • Patuhi hak cipta konten</p>
-                </div>
-            </div>
-        </footer>
 
-        <!-- Progress Modal -->
-        <div id="progressModal" class="modal" style="display: none;">
-            <div class="modal-content progress-modal">
-                <div class="modal-header">
-                    <h3><i class="fas fa-download"></i> Progress Download</h3>
-                    <button class="modal-close" onclick="hideProgressModal()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="progress-info">
-                        <div class="progress-stats">
-                            <div class="stat">
-                                <span class="stat-label">Progress:</span>
-                                <span class="stat-value" id="progressPercent">0%</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-label">Kecepatan:</span>
-                                <span class="stat-value" id="progressSpeed">0 MB/s</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-label">Estimasi:</span>
-                                <span class="stat-value" id="progressETA">--:--</span>
-                            </div>
-                        </div>
-                        
-                        <div class="progress-container">
-                            <div class="progress-bar-large">
-                                <div class="progress-fill-large" id="progressBarFill"></div>
-                            </div>
-                            <div class="progress-text" id="progressText">Menunggu...</div>
-                        </div>
-                        
-                        <div class="file-info">
-                            <div class="file-icon">
-                                <i class="fas fa-file-video"></i>
-                            </div>
-                            <div class="file-details">
-                                <div class="file-name" id="fileName">Video File</div>
-                                <div class="file-size" id="fileSize">-- MB</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn-secondary" onclick="hideProgressModal()" id="hideProgressBtn">
-                        <i class="fas fa-eye-slash"></i> Sembunyikan
-                    </button>
-                    <button class="btn-primary" onclick="cancelDownload()" id="cancelBtn" style="display: none;">
-                        <i class="fas fa-times"></i> Batalkan
-                    </button>
+                <div class="footer-copyright">
+                    <p>&copy; <?php echo date('Y'); ?> Develop By <span class="text-italic">Masamune21</span></p>
                 </div>
             </div>
-        </div>
-
-        <!-- Support Modal -->
-        <div id="supportModal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3><i class="fas fa-headset"></i> Support Center</h3>
-                    <button class="modal-close" onclick="closeModal('supportModal')">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="support-content">
-                        <div class="support-item">
-                            <i class="fas fa-book"></i>
-                            <div>
-                                <h4>Dokumentasi</h4>
-                                <p>Pelajari cara penggunaan platform kami</p>
-                            </div>
-                        </div>
-                        <div class="support-item">
-                            <i class="fas fa-comments"></i>
-                            <div>
-                                <h4>Live Chat</h4>
-                                <p>Chat langsung dengan support team</p>
-                            </div>
-                        </div>
-                        <div class="support-item">
-                            <i class="fas fa-envelope"></i>
-                            <div>
-                                <h4>Email Support</h4>
-                                <p>support@<?php echo $_SERVER['HTTP_HOST']; ?></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    </div>
+    </footer>
 
     </div>
+
+    <!-- Support Modal -->
+    <div id="supportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-headset"></i> Support</h3>
+                <button class="modal-close" onclick="closeModal('supportModal')" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><a href="https://github.com/Masamune21-dev/video-downloader"
+                        target="_blank">https://github.com/Masamune21-dev/video-downloader</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contactModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-envelope"></i> Contact</h3>
+                <button class="modal-close" onclick="closeModal('contactModal')" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>masamunekazuto21@gmail.com</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Privacy Modal -->
+    <div id="privacyModal" class="modal">
+        <div class="modal-content privacy-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-shield-alt"></i> Privacy Policy</h3>
+                <button class="modal-close" onclick="closeModal('privacyModal')" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Kami tidak menyimpan data pengguna. Semua download bersifat pribadi.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div id="progressModal" class="modal">
+        <div class="modal-content progress-content">
+            <h3 id="fileName">Preparing download...</h3>
+
+            <div class="progress-wrapper">
+                <div class="progress-bar">
+                    <div id="progressBarFill"></div>
+                </div>
+
+                <div class="progress-info">
+                    <span id="progressPercent">0%</span>
+                    <span id="progressSpeed">0 MB/s</span>
+                    <span id="progressETA">--:--</span>
+                </div>
+
+                <div class="progress-meta">
+                    <span id="progressText">Initializing...</span>
+                    <span id="fileSize">--</span>
+                </div>
+            </div>
+
+            <button class="btn-cancel" onclick="hideProgressModal()">Close</button>
+        </div>
+    </div>
+
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="<?php echo full_url('assets/js/app.js'); ?>"></script>
     <script src="<?php echo full_url('assets/js/particles.js'); ?>"></script>
-    
 </body>
+
 </html>

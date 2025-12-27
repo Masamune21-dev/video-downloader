@@ -1,150 +1,135 @@
 <?php
 require_once 'config.php';
 
-/* ===== VALIDASI ===== */
+/* =========================================================
+   VALIDASI INPUT
+   ========================================================= */
 if (empty($_POST['url'])) {
-    json_response(['status' => 'error', 'message' => 'URL kosong']);
+    json_response([
+        'status' => 'error',
+        'message' => 'URL tidak boleh kosong'
+    ]);
 }
 
 $url = escapeshellarg($_POST['url']);
 
-/* ===== GET FORMAT DATA ===== */
-$formatId = $_POST['format_id'] ?? '';
+$formatId   = $_POST['format_id']   ?? '';
 $formatType = $_POST['format_type'] ?? 'video';
-$selectedQuality = $_POST['quality'] ?? '';
+$quality    = $_POST['quality']     ?? '';
 $formatData = $_POST['format_data'] ?? '';
 
-// Decode format data
 $formatInfo = [];
-if (!empty($formatData)) {
-    $formatInfo = json_decode($formatData, true);
+if ($formatData) {
+    $decoded = json_decode($formatData, true);
+    if (is_array($decoded)) {
+        $formatInfo = $decoded;
+    }
 }
 
-/* ===== JOB ID ===== */
+/* =========================================================
+   JOB ID & PATH
+   ========================================================= */
 $jobId = uniqid('vd_', true);
 
-/* ===== PATHS ===== */
 $progressFile = TEMP_PROGRESS . $jobId . '.log';
-$pidFile = TEMP_PROGRESS . $jobId . '.pid';
-$metadataFile = TEMP_PROGRESS . $jobId . '.json';
-$outputFile = TEMP_FILES . $jobId . '.%(ext)s';
+$pidFile      = TEMP_PROGRESS . $jobId . '.pid';
+$metaFile     = TEMP_PROGRESS . $jobId . '.json';
+$outputTpl    = TEMP_FILES . $jobId . '.%(ext)s';
 
-/* ===== BUILD COMMAND ===== */
+/* =========================================================
+   BUILD yt-dlp COMMAND (STABLE & SAFE)
+   ========================================================= */
 $cmd = YTDLP_BIN;
-
-// Common options
 $cmd .= " --no-playlist";
-$cmd .= " --no-warnings";
 $cmd .= " --newline";
 $cmd .= " --progress";
-$cmd .= " --console-title";
-$cmd .= " --no-part";
+$cmd .= " --merge-output-format mp4";
 $cmd .= " --restrict-filenames";
-$cmd .= " --socket-timeout 30";
 $cmd .= " --retries 10";
 $cmd .= " --fragment-retries 10";
-$cmd .= " --skip-unavailable-fragments";
+$cmd .= " --socket-timeout 30";
 
-/* ===== FORMAT SPECIFIC ===== */
+/* =========================================================
+   FORMAT HANDLING
+   ========================================================= */
 if ($formatType === 'audio') {
-    // Audio download
-    $cmd .= " -x --audio-format mp3";
-    $cmd .= " --audio-quality 0";
-    $cmd .= " --postprocessor-args \"-ar 44100 -ac 2 -b:a 192k\"";
-    
-    if (!empty($formatId)) {
-        $cmd .= " -f \"$formatId\"";
-    } else {
-        $cmd .= " -f \"bestaudio[ext=m4a]/bestaudio\"";
-    }
-    
+    // ===== AUDIO ONLY (MP3) =====
+    $cmd .= " -x --audio-format mp3 --audio-quality 0";
+    $cmd .= " -f \"bestaudio\"";
+
 } else {
-    // Video download
-    
-    // Handle format selection
-    if (!empty($formatId)) {
-        if (isset($formatInfo['video_id']) && isset($formatInfo['audio_id'])) {
-            // Combined video+audio
-            $cmd .= " -f \"{$formatInfo['video_id']}+{$formatInfo['audio_id']}\"";
-            $cmd .= " --merge-output-format mp4";
-            $cmd .= " --audio-quality 0";
-            $cmd .= " --postprocessor-args \"-c:v copy -c:a aac -b:a 192k\"";
-        } else {
-            // Single format
-            $cmd .= " -f \"$formatId\"";
-            $cmd .= " --merge-output-format mp4";
-            
-            // Force audio conversion to AAC for better compatibility
-            $cmd .= " --postprocessor-args \"-c:a aac -b:a 192k\"";
-        }
-    } else {
-        // Auto selection based on quality
-        $qualityMap = [
-            '2160' => 'bestvideo[height<=2160][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=2160]',
-            '1440' => 'bestvideo[height<=1440][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1440]',
-            '1080' => 'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080]',
-            '720' => 'bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720]',
-            '480' => 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-            '360' => 'bestvideo[height<=360]+bestaudio/best[height<=360]',
-        ];
+    // ===== VIDEO =====
+    if (!empty($formatInfo['video_id']) && !empty($formatInfo['audio_id'])) {
+        // Combined video + audio (untuk kualitas tinggi)
+        $cmd .= " -f \"{$formatInfo['video_id']}+{$formatInfo['audio_id']}\"";
         
-        $fallbackFormat = $qualityMap[$selectedQuality] ?? 'bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/best';
-        $cmd .= " -f \"$fallbackFormat\"";
-        $cmd .= " --merge-output-format mp4";
-        $cmd .= " --postprocessor-args \"-c:a aac -b:a 192k\"";
-    }
-    
-    // Add optional recoding
-    if (isset($_POST['recode']) && $_POST['recode'] === 'true') {
+        // Tambah parameter untuk kualitas tinggi
         $cmd .= " --recode-video mp4";
+        $cmd .= " --postprocessor-args \"-c:v libx264 -preset medium -crf 18\"";
+        
+    } elseif (!empty($formatId)) {
+        // Single selected format
+        $cmd .= " -f \"$formatId\"";
+        
+        // Jika format tinggi, gunakan setting khusus
+        $quality = $formatInfo['height'] ?? 0;
+        if ($quality >= 1440) {
+            $cmd .= " --recode-video mp4";
+            $cmd .= " --postprocessor-args \"-c:v libx264 -preset slow -crf 17\"";
+        }
+        
+    } else {
+        // Fallback best
+        $cmd .= " -f \"bestvideo[height<=?2160]+bestaudio/best\"";
     }
 }
 
-// Output configuration
-$cmd .= " -o \"$outputFile\"";
+/* =========================================================
+   OUTPUT & EXECUTION
+   ========================================================= */
+$cmd .= " -o \"$outputTpl\"";
 $cmd .= " $url";
-
-// Add progress logging
 $cmd .= " 2>&1 | tee \"$progressFile\"";
 
-/* ===== CREATE METADATA ===== */
+/* =========================================================
+   SAVE METADATA
+   ========================================================= */
 $metadata = [
-    'job_id' => $jobId,
-    'url' => $_POST['url'],
+    'job_id'    => $jobId,
+    'url'       => $_POST['url'],
     'format_id' => $formatId,
-    'format_type' => $formatType,
-    'quality' => $selectedQuality,
-    'format_info' => $formatInfo,
-    'start_time' => time(),
-    'status' => 'starting',
-    'command' => $cmd // For debugging
+    'format'    => $formatType,
+    'quality'   => $quality,
+    'start'     => time(),
+    'command'   => $cmd
 ];
+file_put_contents($metaFile, json_encode($metadata, JSON_PRETTY_PRINT));
 
-file_put_contents($metadataFile, json_encode($metadata));
-
-/* ===== EXECUTE ASYNC ===== */
-// Write command to shell script
+/* =========================================================
+   CREATE & RUN ASYNC SHELL SCRIPT
+   ========================================================= */
 $shellScript = TEMP_PROGRESS . $jobId . '.sh';
-file_put_contents($shellScript, "#!/bin/bash\n" . $cmd . "\necho $? > \"$pidFile\"");
+
+file_put_contents(
+    $shellScript,
+    "#!/bin/bash\n$cmd\necho \$! > \"$pidFile\""
+);
+
 chmod($shellScript, 0755);
 
-// Execute in background
-$asyncCmd = "nohup bash \"$shellScript\" > /dev/null 2>&1 & echo $!";
-$pid = shell_exec($asyncCmd);
+// Run async
+$pid = shell_exec("nohup bash \"$shellScript\" > /dev/null 2>&1 & echo $!");
 
-// Update metadata with PID
+// Save PID
 $metadata['pid'] = trim($pid);
-file_put_contents($metadataFile, json_encode($metadata));
+file_put_contents($metaFile, json_encode($metadata, JSON_PRETTY_PRINT));
 
-/* ===== RESPONSE ===== */
+/* =========================================================
+   RESPONSE
+   ========================================================= */
 json_response([
-    'status' => 'started',
-    'job_id' => $jobId,
-    'message' => 'Download telah dimulai',
-    'details' => [
-        'type' => $formatType === 'audio' ? 'MP3 Audio' : 'Video',
-        'quality' => $selectedQuality,
-        'progress_url' => 'progress.php?id=' . $jobId
-    ]
+    'status'  => 'started',
+    'job_id'  => $jobId,
+    'message' => 'Download dimulai',
+    'progress_url' => full_url('progress.php?id=' . $jobId)
 ]);
-?>

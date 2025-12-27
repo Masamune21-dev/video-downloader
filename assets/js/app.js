@@ -9,18 +9,42 @@ let downloadManager = {
 };
 
 // DOM Ready
-document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
-    setupEventListeners();
+document.addEventListener('DOMContentLoaded', function () {
+    // 🔥 HARD RESET DOWNLOAD STATE
+    downloadManager.isDownloading = false;
+    downloadManager.jobId = null;
+
+    const pm = document.getElementById('progressModal');
+    if (pm) pm.style.display = 'none';
+
+    if (downloadManager.progressInterval) {
+        clearInterval(downloadManager.progressInterval);
+        downloadManager.progressInterval = null;
+    }
+
+// Inisialisasi theme manager
+const themeManager = new ThemeManager();
+
+// Update partikel berdasarkan tema awal
+const initialTheme = themeManager.getCurrentTheme();
+updateParticlesForTheme(initialTheme);
+
+// Listen untuk perubahan tema
+document.addEventListener('themeChange', (e) => {
+    updateParticlesForTheme(e.detail.theme);
+});
+
+initializeApp();
+setupEventListeners();
 });
 
 function initializeApp() {
     // Initialize particles
     initParticles();
-    
+
     // Initialize theme
     initTheme();
-    
+
     // Check for existing downloads
     checkExistingDownloads();
 }
@@ -28,22 +52,22 @@ function initializeApp() {
 function setupEventListeners() {
     // Form submission
     document.getElementById('downloadForm').addEventListener('submit', handleFormSubmit);
-    
+
     // Paste button
     document.getElementById('pasteBtn').addEventListener('click', pasteFromClipboard);
-    
+
     // Clear button
     document.getElementById('clearBtn').addEventListener('click', clearForm);
-    
+
     // Platform quick buttons
     document.querySelectorAll('.quick-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
             document.getElementById('videoUrl').value = '';
             document.getElementById('videoUrl').focus();
             showToast(`Siap untuk URL ${this.textContent.trim()}`, true);
         });
     });
-    
+
     // Theme toggle
     document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 }
@@ -51,32 +75,32 @@ function setupEventListeners() {
 // ===== FORM HANDLING =====
 async function handleFormSubmit(e) {
     e.preventDefault();
-    
+
     if (downloadManager.isAnalyzing) return;
-    
+
     const url = document.getElementById('videoUrl').value.trim();
     if (!isValidURL(url)) {
         showToast('URL tidak valid. Harap masukkan URL yang benar.', false);
         return;
     }
-    
+
     downloadManager.isAnalyzing = true;
     const submitBtn = document.getElementById('submitBtn');
     const loader = submitBtn.querySelector('.btn-loader');
     const originalText = submitBtn.innerHTML;
-    
+
     // Show loading state
     submitBtn.disabled = true;
     loader.style.display = 'block';
-    
+
     // Show results section
     document.getElementById('resultsSection').style.display = 'block';
     document.getElementById('result').style.display = 'none';
     document.getElementById('loading').style.display = 'block';
-    
+
     // Simulate progress for UX
     simulateAnalysisProgress();
-    
+
     try {
         const response = await fetch('api.php?action=analyze', {
             method: 'POST',
@@ -85,18 +109,18 @@ async function handleFormSubmit(e) {
             },
             body: new URLSearchParams({ url })
         });
-        
+
         if (!response.ok) throw new Error('Network response was not ok');
-        
+
         const data = await response.json();
-        
+
         if (data.status !== 'success') {
             throw new Error(data.message || 'Gagal menganalisis video');
         }
-        
+
         downloadManager.videoData = data;
         displayVideoInfo(data);
-        
+
     } catch (error) {
         showToast(error.message || 'Terjadi kesalahan saat menganalisis', false);
         resetAnalysisState();
@@ -110,8 +134,10 @@ async function handleFormSubmit(e) {
 
 function simulateAnalysisProgress() {
     const progressBar = document.getElementById('loadingProgress');
+    if (!progressBar) return; // ⬅️ FIX UTAMA
+
     let progress = 0;
-    
+
     const interval = setInterval(() => {
         if (progress >= 90) {
             clearInterval(interval);
@@ -123,9 +149,10 @@ function simulateAnalysisProgress() {
     }, 300);
 }
 
+
 function displayVideoInfo(data) {
     const resultDiv = document.getElementById('result');
-    
+
     const html = `
         <div class="video-preview">
             <div class="video-thumbnail">
@@ -169,7 +196,7 @@ function displayVideoInfo(data) {
                 
                 <!-- Format Selection -->
                 <div id="formatSelection">
-                    ${generateVideoFormats(data.available_formats)}
+                    ${generateFormatsFromLegacyAPI(data)}
                 </div>
                 
                 <!-- Download Button -->
@@ -181,24 +208,93 @@ function displayVideoInfo(data) {
             </div>
         </div>
     `;
-    
+
     resultDiv.innerHTML = html;
     resultDiv.style.display = 'block';
-    
+
     // Scroll to results
     resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function generateFormatsFromLegacyAPI(data) {
+    const videoFormats = data.available_formats || [];
+    const audioFormats = data.audio_formats || [];
+
+    return `
+        <div class="format-container">
+
+            <div id="videoFormats" class="format-section">
+                ${videoFormats.length
+            ? `<div class="format-grid">
+                        ${videoFormats.map(f => formatCard(f, f.type || 'muxed')).join('')}
+                       </div>`
+            : `<p class="text-center">Tidak ada format video</p>`}
+            </div>
+
+            <div id="audioFormats" class="format-section" style="display:none">
+                ${audioFormats.length
+            ? `<div class="format-grid">
+                        ${audioFormats.map(f => formatCard(f, 'audio')).join('')}
+                       </div>`
+            : `<p class="text-center">Tidak ada format audio</p>`}
+            </div>
+
+            <div id="muxedFormats" class="format-section" style="display:none">
+                ${videoFormats.length
+            ? `<div class="format-grid">
+                        ${videoFormats.map(f => formatCard(f, 'muxed')).join('')}
+                       </div>`
+            : `<p class="text-center">Tidak ada format video+audio</p>`}
+            </div>
+
+        </div>
+    `;
+}
+
+function generateFormatsByType(formats) {
+    if (!formats) {
+        return `<p class="text-center">Tidak ada format tersedia</p>`;
+    }
+
+    const muxed = formats.muxed || [];
+    const video = formats.video || [];
+    const audio = formats.audio || [];
+
+    return `
+        <div class="format-container">
+
+            <div id="videoFormats" class="format-section">
+                ${video.length
+            ? `<div class="format-grid">${video.map(f => formatCard(f, 'video')).join('')}</div>`
+            : `<p class="text-center">Tidak ada format video</p>`}
+            </div>
+
+            <div id="audioFormats" class="format-section" style="display:none">
+                ${audio.length
+            ? `<div class="format-grid">${audio.map(f => formatCard(f, 'audio')).join('')}</div>`
+            : `<p class="text-center">Tidak ada format audio</p>`}
+            </div>
+
+            <div id="muxedFormats" class="format-section" style="display:none">
+                ${muxed.length
+            ? `<div class="format-grid">${muxed.map(f => formatCard(f, 'muxed')).join('')}</div>`
+            : `<p class="text-center">Tidak ada format video+audio</p>`}
+            </div>
+
+        </div>
+    `;
 }
 
 function generateVideoFormats(formats) {
     if (!formats || formats.length === 0) {
         return '<p class="text-center">Tidak ada format tersedia</p>';
     }
-    
+
     // Group formats by type
     const videoFormats = formats.filter(f => f.type === 'video' || !f.type);
     const audioFormats = formats.filter(f => f.type === 'audio');
     const muxedFormats = formats.filter(f => f.type === 'muxed' || f.type === 'combined');
-    
+
     return `
         <div class="format-container">
             <!-- Video Only -->
@@ -226,17 +322,43 @@ function generateVideoFormats(formats) {
 }
 
 function formatCard(format, type = 'video') {
-    const isHD = (parseInt(format.height) || 0) >= 720;
-    const is4K = (parseInt(format.height) || 0) >= 2160;
-    const filesize = format.filesize || 'Calculating...';
+    const height = parseInt(format.height) || 0;
+    const isHD = height >= 720;
+    const is2K = height >= 1440;
+    const is4K = height >= 2160;
+    const isHDR = format.dynamic_range === 'HDR' || format.dynamic_range === 'Dolby Vision';
+    const is60fps = format.fps >= 50;
     
+    const filesize = format.filesize || 'Calculating...';
+    const resolution = format.resolution || `${height}p`;
+    
+    // Badge untuk kualitas khusus
+    let qualityBadges = '';
+    if (is4K) {
+        qualityBadges += '<span class="format-badge badge-4k"><i class="fas fa-tv"></i> 4K</span>';
+    } else if (is2K) {
+        qualityBadges += '<span class="format-badge badge-2k"><i class="fas fa-desktop"></i> 2K</span>';
+    } else if (isHD) {
+        qualityBadges += '<span class="format-badge badge-hd"><i class="fas fa-hd"></i> HD</span>';
+    }
+    
+    if (isHDR) {
+        qualityBadges += '<span class="format-badge badge-hdr"><i class="fas fa-sun"></i> HDR</span>';
+    }
+    
+    if (is60fps) {
+        qualityBadges += '<span class="format-badge badge-60fps"><i class="fas fa-running"></i> 60fps</span>';
+    }
+    
+    if (type === 'audio') {
+        qualityBadges = '<span class="format-badge badge-audio"><i class="fas fa-music"></i> Audio</span>';
+    }
+
     return `
         <div class="format-card" onclick="selectFormat(this, ${JSON.stringify(format).replace(/"/g, '&quot;')})">
             <div class="format-header">
-                <span class="format-quality">${format.resolution || format.height || 'N/A'}</span>
-                ${is4K ? '<span class="format-badge badge-4k"><i class="fas fa-tv"></i> 4K</span>' : 
-                  isHD ? '<span class="format-badge badge-hd"><i class="fas fa-hd"></i> HD</span>' : 
-                  type === 'audio' ? '<span class="format-badge badge-audio"><i class="fas fa-music"></i> Audio</span>' : ''}
+                <span class="format-quality">${resolution}</span>
+                ${qualityBadges}
             </div>
             <div class="format-details">
                 <div class="detail-item">
@@ -251,6 +373,16 @@ function formatCard(format, type = 'video') {
                     <i class="fas fa-code"></i>
                     <span>${format.vcodec ? format.vcodec.split('.')[0] : format.acodec || 'Unknown'}</span>
                 </div>
+                ${format.note && format.note !== 'High Quality (merged)' ? `
+                <div class="detail-item">
+                    <i class="fas fa-info-circle"></i>
+                    <span>${format.note}</span>
+                </div>` : ''}
+                ${format.type === 'combined' ? `
+                <div class="detail-item">
+                    <i class="fas fa-random"></i>
+                    <span>Video+Audio Merge</span>
+                </div>` : ''}
             </div>
             <div class="format-select">
                 <i class="fas fa-check-circle"></i>
@@ -265,13 +397,13 @@ function selectFormat(element, format) {
     document.querySelectorAll('.format-card').forEach(card => {
         card.classList.remove('selected');
     });
-    
+
     // Add selection to clicked card
     element.classList.add('selected');
-    
+
     // Store selected format
     downloadManager.selectedFormat = format;
-    
+
     // Enable download button
     const btn = document.getElementById('downloadBtn');
     const quality = format.resolution || format.height || '';
@@ -281,24 +413,30 @@ function selectFormat(element, format) {
 }
 
 function showFormatTab(tab) {
-    // Update active tab
-    document.querySelectorAll('.format-tab').forEach(tabEl => {
-        tabEl.classList.remove('active');
-    });
+    document.querySelectorAll('.format-tab').forEach(el =>
+        el.classList.remove('active')
+    );
     event.target.classList.add('active');
-    
-    // Show corresponding formats
-    document.querySelectorAll('.format-section').forEach(section => {
-        section.style.display = 'none';
+
+    document.querySelectorAll('.format-section').forEach(el => {
+        el.style.display = 'none';
     });
-    
-    document.getElementById(tab + 'Formats').style.display = 'block';
-    
-    // Reset selection
+
+    const target = document.getElementById(tab + 'Formats');
+    if (!target) {
+        console.warn('Format tab not found:', tab);
+        return;
+    }
+
+    target.style.display = 'block';
+
+    // reset download button
     downloadManager.selectedFormat = null;
     const btn = document.getElementById('downloadBtn');
-    btn.innerHTML = '<i class="fas fa-download"></i> Pilih format terlebih dahulu';
-    btn.disabled = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-download"></i> Pilih format terlebih dahulu`;
+    }
 }
 
 // ===== DOWNLOAD HANDLING =====
@@ -306,18 +444,18 @@ async function startDownload() {
     if (!downloadManager.selectedFormat || downloadManager.isDownloading) {
         return;
     }
-    
+
     const url = document.getElementById('videoUrl').value.trim();
     if (!url) {
         showToast('URL tidak ditemukan', false);
         return;
     }
-    
+
     downloadManager.isDownloading = true;
-    
+
     // Show progress modal
     showProgressModal();
-    
+
     // Prepare download data
     const formData = new FormData();
     formData.append('url', url);
@@ -325,33 +463,33 @@ async function startDownload() {
     formData.append('format_type', downloadManager.selectedFormat.type || 'video');
     formData.append('quality', downloadManager.selectedFormat.height || 'best');
     formData.append('format_data', JSON.stringify(downloadManager.selectedFormat));
-    
+
     try {
         const response = await fetch('api.php?action=download', {
             method: 'POST',
             body: formData
         });
-        
+
         const data = await response.json();
-        
+
         if (data.status === 'started') {
             downloadManager.jobId = data.job_id;
-            
+
             // Start polling progress
             startProgressPolling(data.job_id);
-            
+
             // Update modal with file info
             if (downloadManager.videoData) {
-                document.getElementById('fileName').textContent = 
-                    downloadManager.videoData.title.substring(0, 30) + 
+                document.getElementById('fileName').textContent =
+                    downloadManager.videoData.title.substring(0, 30) +
                     (downloadManager.videoData.title.length > 30 ? '...' : '');
             }
-            
+
             showToast('Download dimulai!', true);
         } else {
             throw new Error(data.message || 'Gagal memulai download');
         }
-        
+
     } catch (error) {
         showToast(error.message, false);
         downloadManager.isDownloading = false;
@@ -363,18 +501,18 @@ function startProgressPolling(jobId) {
     if (downloadManager.progressInterval) {
         clearInterval(downloadManager.progressInterval);
     }
-    
+
     downloadManager.progressInterval = setInterval(async () => {
         try {
             const response = await fetch(`progress.php?id=${jobId}`);
             const data = await response.json();
-            
+
             updateProgressUI(data);
-            
+
             if (data.status === 'finished' || data.status === 'error') {
                 clearInterval(downloadManager.progressInterval);
                 downloadManager.isDownloading = false;
-                
+
                 if (data.status === 'finished' && data.file) {
                     // Auto download after delay
                     setTimeout(() => {
@@ -382,7 +520,7 @@ function startProgressPolling(jobId) {
                     }, 1000);
                 }
             }
-            
+
         } catch (error) {
             console.error('Progress polling error:', error);
         }
@@ -396,7 +534,7 @@ function updateProgressUI(data) {
     const progressETA = document.getElementById('progressETA');
     const progressText = document.getElementById('progressText');
     const fileSize = document.getElementById('fileSize');
-    
+
     switch (data.status) {
         case 'downloading':
             const progress = parseFloat(data.progress) || 0;
@@ -407,7 +545,7 @@ function updateProgressUI(data) {
             progressText.textContent = data.message || 'Downloading...';
             if (data.total_size) fileSize.textContent = data.total_size;
             break;
-            
+
         case 'processing':
             progressFill.style.width = '100%';
             progressPercent.textContent = '100%';
@@ -415,7 +553,7 @@ function updateProgressUI(data) {
             progressETA.textContent = '--:--';
             progressText.textContent = data.message || 'Processing video...';
             break;
-            
+
         case 'finished':
             progressFill.style.width = '100%';
             progressPercent.textContent = '100%';
@@ -424,7 +562,7 @@ function updateProgressUI(data) {
             progressText.textContent = data.message || 'Download selesai!';
             if (data.file_size) fileSize.textContent = data.file_size;
             break;
-            
+
         case 'error':
             progressText.textContent = data.message || 'Terjadi kesalahan';
             showToast(data.message || 'Download gagal', false);
@@ -434,11 +572,37 @@ function updateProgressUI(data) {
 
 // ===== UI FUNCTIONS =====
 function showProgressModal() {
-    document.getElementById('progressModal').style.display = 'block';
+    if (!downloadManager.isDownloading) {
+        console.warn('Blocked progress modal (not downloading)');
+        return;
+    }
+
+    const modal = document.getElementById('progressModal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
 }
 
 function hideProgressModal() {
-    document.getElementById('progressModal').style.display = 'none';
+    const modal = document.getElementById('progressModal');
+    if (modal) modal.style.display = 'none';
+
+    // RESET STATE
+    downloadManager.isDownloading = false;
+    downloadManager.jobId = null;
+
+    if (downloadManager.progressInterval) {
+        clearInterval(downloadManager.progressInterval);
+        downloadManager.progressInterval = null;
+    }
+
+    // RESET UI
+    document.getElementById('progressBarFill').style.width = '0%';
+    document.getElementById('progressPercent').textContent = '0%';
+    document.getElementById('progressSpeed').textContent = '0 MB/s';
+    document.getElementById('progressETA').textContent = '--:--';
+    document.getElementById('progressText').textContent = 'Initializing...';
+    document.getElementById('fileSize').textContent = '--';
 }
 
 function closeResults() {
@@ -450,7 +614,7 @@ function resetAnalysisState() {
     downloadManager.isAnalyzing = false;
     downloadManager.selectedFormat = null;
     downloadManager.videoData = null;
-    
+
     const submitBtn = document.getElementById('submitBtn');
     const loader = submitBtn.querySelector('.btn-loader');
     submitBtn.disabled = false;
@@ -496,8 +660,8 @@ function showToast(message, success = true) {
         position: "right",
         stopOnFocus: true,
         style: {
-            background: success ? "linear-gradient(135deg, #22c55e, #16a34a)" : 
-                               "linear-gradient(135deg, #ef4444, #dc2626)",
+            background: success ? "linear-gradient(135deg, #22c55e, #16a34a)" :
+                "linear-gradient(135deg, #ef4444, #dc2626)",
             borderRadius: "12px",
             fontWeight: "500",
             padding: "12px 20px",
@@ -516,7 +680,7 @@ function initTheme() {
 function toggleTheme() {
     const currentTheme = document.documentElement.className;
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
+
     document.documentElement.className = newTheme;
     localStorage.setItem('theme', newTheme);
     updateThemeIcon(newTheme);
@@ -541,7 +705,7 @@ function closeModal(modalId) {
 }
 
 // Close modal when clicking outside
-window.onclick = function(event) {
+window.onclick = function (event) {
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
         if (event.target === modal) {
@@ -567,6 +731,89 @@ function checkExistingDownloads() {
         if (timeDiff < 5 * 60 * 1000) { // 5 minutes
             showToast('Download sebelumnya mungkin masih berjalan', 'info');
         }
+    }
+}
+
+class ThemeManager {
+    constructor() {
+        this.themeToggle = document.getElementById('themeToggle');
+        this.themeIcon = this.themeToggle.querySelector('i');
+        this.init();
+    }
+
+    init() {
+        // Cek tema yang disimpan atau preferensi sistem
+        const savedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (savedTheme) {
+            this.setTheme(savedTheme);
+        } else if (!prefersDark) {
+            this.setTheme('light');
+        }
+
+        // Event listener untuk toggle button
+        this.themeToggle.addEventListener('click', () => this.toggleTheme());
+    }
+
+    setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+
+        // Update icon
+        if (theme === 'light') {
+            this.themeIcon.className = 'fas fa-sun';
+            this.themeToggle.setAttribute('aria-label', 'Switch to dark mode');
+        } else {
+            this.themeIcon.className = 'fas fa-moon';
+            this.themeToggle.setAttribute('aria-label', 'Switch to light mode');
+        }
+
+        // Simpan preferensi
+        localStorage.setItem('theme', theme);
+
+        // Dispatch event untuk komponen lain
+        document.dispatchEvent(new CustomEvent('themeChange', { detail: { theme } }));
+    }
+
+    toggleTheme() {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        this.setTheme(newTheme);
+
+        // Animasi untuk feedback
+        this.themeToggle.style.transform = 'scale(0.9)';
+        setTimeout(() => {
+            this.themeToggle.style.transform = 'scale(1)';
+        }, 100);
+    }
+
+    getCurrentTheme() {
+        return document.documentElement.getAttribute('data-theme') || 'dark';
+    }
+}
+
+// Update partikel untuk menyesuaikan tema
+function updateParticlesForTheme(theme) {
+    const particles = document.getElementById('particles');
+    if (!particles) return;
+
+    particles.style.opacity = theme === 'dark' ? '0.3' : '0.1';
+
+    // Jika menggunakan canvas particles, update juga
+    if (window.particlesJS) {
+        particlesJS('particles', {
+            particles: {
+                number: {
+                    value: theme === 'dark' ? 80 : 40,
+                },
+                color: {
+                    value: theme === 'dark' ? '#ffffff' : '#6366f1'
+                },
+                opacity: {
+                    value: theme === 'dark' ? 0.1 : 0.05
+                }
+            }
+        });
     }
 }
 

@@ -7,7 +7,7 @@ if ($action === 'analyze') {
     $url = escapeshellarg($_POST['url']);
     
     // Gunakan output yang lebih detail dengan format spesifik
-    $cmd = YTDLP_BIN . " -J --no-playlist --format-sort \"res,codec,br\" $url 2>/dev/null";
+    $cmd = YTDLP_BIN . " -J --no-playlist $url 2>/dev/null";
     $output = shell_exec($cmd);
     
     if (!$output) {
@@ -19,99 +19,113 @@ if ($action === 'analyze') {
     
     $data = json_decode($output, true);
     $availableFormats = [];
+    $videoOnlyFormats = [];
+    $audioOnlyFormats = [];
+    $bestAudioFormat = null;
     
-    // Proses setiap format untuk mendapatkan video DENGAN audio
+    // Proses semua format
     if (isset($data['formats'])) {
         foreach ($data['formats'] as $format) {
-            // Filter hanya format yang memiliki video DAN audio
             $hasVideo = isset($format['vcodec']) && $format['vcodec'] != 'none';
             $hasAudio = isset($format['acodec']) && $format['acodec'] != 'none';
             
+            // Format muxed (video+audio)
             if ($hasVideo && $hasAudio) {
-                // Format dengan video+audio (muxed)
-                $formatInfo = [
+                $availableFormats[] = [
                     'format_id' => $format['format_id'] ?? '',
                     'ext' => $format['ext'] ?? '',
-                    'resolution' => $format['resolution'] ?? (isset($format['height']) ? $format['height'] . 'p' : 'Unknown'),
+                    'resolution' => get_resolution_string($format),
                     'height' => $format['height'] ?? 0,
+                    'width' => $format['width'] ?? 0,
                     'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown',
                     'filesize_bytes' => $format['filesize'] ?? 0,
                     'vcodec' => $format['vcodec'] ?? '',
                     'acodec' => $format['acodec'] ?? '',
                     'note' => $format['format_note'] ?? '',
-                    'type' => 'muxed' // Video+audio sudah digabung
+                    'type' => 'muxed',
+                    'bitrate' => $format['abr'] ?? $format['tbr'] ?? 0
                 ];
-                $availableFormats[] = $formatInfo;
+            }
+            
+            // Format video only (untuk kualitas tinggi)
+            if ($hasVideo && !$hasAudio) {
+                $videoOnlyFormats[] = [
+                    'format_id' => $format['format_id'] ?? '',
+                    'ext' => $format['ext'] ?? '',
+                    'resolution' => get_resolution_string($format),
+                    'height' => $format['height'] ?? 0,
+                    'width' => $format['width'] ?? 0,
+                    'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown',
+                    'filesize_bytes' => $format['filesize'] ?? 0,
+                    'vcodec' => $format['vcodec'] ?? '',
+                    'fps' => $format['fps'] ?? 0,
+                    'dynamic_range' => isset($format['dynamic_range']) ? $format['dynamic_range'] : 'SDR',
+                    'type' => 'video',
+                    'bitrate' => $format['tbr'] ?? 0
+                ];
+            }
+            
+            // Format audio only (untuk gabungan)
+            if ($hasAudio && !$hasVideo) {
+                $audioOnlyFormats[] = [
+                    'format_id' => $format['format_id'] ?? '',
+                    'ext' => $format['ext'] ?? '',
+                    'acodec' => $format['acodec'] ?? '',
+                    'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown',
+                    'filesize_bytes' => $format['filesize'] ?? 0,
+                    'type' => 'audio',
+                    'bitrate' => $format['abr'] ?? 0,
+                    'quality' => isset($format['quality']) ? $format['quality'] : 0
+                ];
             }
         }
     }
     
-    // Jika tidak ada format muxed, ambil format video only dan audio only terpisah
-    if (empty($availableFormats)) {
-        $videoOnlyFormats = [];
-        $audioOnlyFormats = [];
-        
-        foreach ($data['formats'] as $format) {
-            $hasVideo = isset($format['vcodec']) && $format['vcodec'] != 'none';
-            $hasAudio = isset($format['acodec']) && $format['acodec'] != 'none';
-            
-            if ($hasVideo && !$hasAudio) {
-                // Video only
-                $videoOnlyFormats[] = [
-                    'format_id' => $format['format_id'],
-                    'height' => $format['height'] ?? 0,
-                    'vcodec' => $format['vcodec'] ?? '',
-                    'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown'
-                ];
-            }
-            
-            if ($hasAudio && !$hasVideo) {
-                // Audio only
-                $audioOnlyFormats[] = [
-                    'format_id' => $format['format_id'],
-                    'acodec' => $format['acodec'] ?? '',
-                    'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown',
-                    'bitrate' => isset($format['abr']) ? $format['abr'] . 'kbps' : 'Unknown'
-                ];
-            }
-        }
-        
-        // Gabungkan video terbaik dengan audio terbaik
-        if (!empty($videoOnlyFormats) && !empty($audioOnlyFormats)) {
-            // Urutkan video dari kualitas tertinggi
-            usort($videoOnlyFormats, function($a, $b) {
-                return $b['height'] - $a['height'];
-            });
-            
-            // Urutkan audio dari bitrate tertinggi
-            usort($audioOnlyFormats, function($a, $b) {
-                $bitrateA = isset($a['bitrate']) ? intval($a['bitrate']) : 0;
-                $bitrateB = isset($b['bitrate']) ? intval($b['bitrate']) : 0;
-                return $bitrateB - $bitrateA;
-            });
-            
-            // Buat format kombinasi
-            $bestVideo = $videoOnlyFormats[0];
-            $bestAudio = $audioOnlyFormats[0];
+    // Urutkan video only dari kualitas tertinggi (4K, 2K, 1080p, dll)
+    usort($videoOnlyFormats, function($a, $b) {
+        return $b['height'] - $a['height'];
+    });
+    
+    // Urutkan audio only dari bitrate tertinggi
+    usort($audioOnlyFormats, function($a, $b) {
+        return $b['bitrate'] - $a['bitrate'];
+    });
+    
+    // Ambil audio terbaik untuk kombinasi
+    $bestAudioFormat = !empty($audioOnlyFormats) ? $audioOnlyFormats[0] : null;
+    
+    // Buat format kombinasi dari video-only + audio-only (untuk kualitas tinggi)
+    if (!empty($videoOnlyFormats) && $bestAudioFormat) {
+        foreach ($videoOnlyFormats as $videoFormat) {
+            // Skip jika resolusi terlalu rendah (opsional)
+            if ($videoFormat['height'] < 720) continue;
             
             $availableFormats[] = [
-                'format_id' => $bestVideo['format_id'] . '+' . $bestAudio['format_id'],
+                'format_id' => $videoFormat['format_id'] . '+' . $bestAudioFormat['format_id'],
                 'ext' => 'mp4',
-                'resolution' => $bestVideo['height'] . 'p',
-                'height' => $bestVideo['height'],
-                'filesize' => 'Unknown (will merge)',
+                'resolution' => $videoFormat['resolution'],
+                'height' => $videoFormat['height'],
+                'width' => $videoFormat['width'],
+                'filesize' => 'Auto Merge',
                 'filesize_bytes' => 0,
-                'vcodec' => $bestVideo['vcodec'],
-                'acodec' => $bestAudio['acodec'],
-                'note' => 'Video+Audio (merged)',
+                'vcodec' => $videoFormat['vcodec'],
+                'acodec' => $bestAudioFormat['acodec'],
+                'note' => 'High Quality (merged)',
                 'type' => 'combined',
-                'video_id' => $bestVideo['format_id'],
-                'audio_id' => $bestAudio['format_id']
+                'video_id' => $videoFormat['format_id'],
+                'audio_id' => $bestAudioFormat['format_id'],
+                'dynamic_range' => $videoFormat['dynamic_range'] ?? 'SDR',
+                'fps' => $videoFormat['fps'] ?? 0
             ];
         }
     }
     
-    // Cari format audio untuk MP3 (hanya audio only)
+    // Urutkan semua format dari kualitas tertinggi
+    usort($availableFormats, function($a, $b) {
+        return $b['height'] - $a['height'];
+    });
+    
+    // Filter audio formats untuk MP3
     $audioFormats = [];
     if (isset($data['formats'])) {
         foreach ($data['formats'] as $format) {
@@ -122,7 +136,8 @@ if ($action === 'analyze') {
                     'ext' => $format['ext'],
                     'filesize' => isset($format['filesize']) ? format_file_size($format['filesize']) : 'Unknown',
                     'bitrate' => isset($format['abr']) ? $format['abr'] . 'kbps' : 'Unknown',
-                    'acodec' => $format['acodec'] ?? ''
+                    'acodec' => $format['acodec'] ?? '',
+                    'type' => 'audio'
                 ];
             }
         }
@@ -138,13 +153,36 @@ if ($action === 'analyze') {
         'view_count' => $data['view_count'] ?? 0,
         'available_formats' => $availableFormats,
         'audio_formats' => array_slice($audioFormats, 0, 5),
-        'has_muxed_formats' => !empty(array_filter($availableFormats, function($f) { 
-            return isset($f['type']) && $f['type'] === 'muxed'; 
+        'has_high_quality' => !empty(array_filter($availableFormats, function($f) { 
+            return $f['height'] >= 1440; // 2K+
         }))
     ]);
 }
 
-// Tambahkan fungsi helper untuk format ukuran file
+// Helper function untuk mendapatkan string resolusi
+function get_resolution_string($format) {
+    if (isset($format['resolution'])) {
+        return $format['resolution'];
+    }
+    
+    if (isset($format['height'])) {
+        $height = $format['height'];
+        $width = $format['width'] ?? round($height * 16/9);
+        
+        // Deteksi 4K, 2K, dll
+        if ($height >= 2160) return '4K';
+        if ($height >= 1440) return '2K';
+        if ($height >= 1080) return '1080p';
+        if ($height >= 720) return '720p';
+        if ($height >= 480) return '480p';
+        if ($height >= 360) return '360p';
+        
+        return $height . 'p';
+    }
+    
+    return 'Unknown';
+}
+
 function format_file_size($bytes) {
     if ($bytes == 0) return '0 Bytes';
     $k = 1024;
@@ -152,6 +190,7 @@ function format_file_size($bytes) {
     $i = floor(log($bytes) / log($k));
     return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
 }
+
 if ($action === 'download') {
     require 'process_download.php';
 }
