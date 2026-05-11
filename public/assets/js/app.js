@@ -34,9 +34,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initializeApp() {
-    // Initialize particles
-    initParticles();
-
     // Initialize theme
     initTheme();
 }
@@ -703,22 +700,23 @@ function showToast(message, success = true) {
         className: "mini-toast",
         stopOnFocus: true,
         style: {
-            background: success ? "linear-gradient(135deg, #22c55e, #16a34a)" :
-                "linear-gradient(135deg, #ef4444, #dc2626)",
-            borderRadius: "10px",
-            fontWeight: "600",
+            background: success ? "#b8ff9f" : "#ff9f9f",
+            color: "#0b0b0b",
+            border: "3px solid #0b0b0b",
+            borderRadius: "6px",
+            fontWeight: "900",
             fontSize: "12px",
             lineHeight: "1.35",
             padding: "8px 12px",
-            boxShadow: "0 8px 20px rgba(0, 0, 0, 0.28)"
+            boxShadow: "4px 4px 0 #0b0b0b"
         }
     }).showToast();
 }
 
 // ===== THEME FUNCTIONS =====
 function initTheme() {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    document.documentElement.className = 'dark';
+    document.documentElement.setAttribute('data-theme', 'brutal');
+    document.documentElement.className = '';
 }
 
 // ===== SUPPORT FUNCTIONS =====

@@ -2,21 +2,21 @@
 require_once __DIR__ . '/../app/bootstrap.php';
 ?>
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="app-base-url" content="<?php echo htmlspecialchars(rtrim(BASE_URL, '/'), ENT_QUOTES, 'UTF-8'); ?>">
-    <title>Video Downloader - Dark Neon Landing Page</title>
+    <title>Video Downloader - Neo Brutalism UI</title>
     <meta name="description"
-        content="Modern dark neon video downloader UI for YouTube, TikTok, Instagram, Twitter, and more.">
+        content="Neo brutalism video downloader UI for YouTube, TikTok, Instagram, Twitter, and more.">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
 
     <!-- Icons - Load only necessary -->
@@ -29,8 +29,8 @@ require_once __DIR__ . '/../app/bootstrap.php';
     <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>">
 
     <!-- Theme Color -->
-    <meta name="theme-color" content="#0f0f23">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#ffe500">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
     <!-- Preload critical CSS -->
     <link rel="preload" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>" as="style">
@@ -38,9 +38,6 @@ require_once __DIR__ . '/../app/bootstrap.php';
 </head>
 
 <body class="bg-gradient">
-    <!-- Animated Background - Disederhanakan -->
-    <div class="particles" id="particles"></div>
-
     <!-- Main Container -->
     <div class="app-container">
 
@@ -213,7 +210,6 @@ require_once __DIR__ . '/../app/bootstrap.php';
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="<?php echo full_url('assets/js/app.js?v=' . filemtime(APP_PUBLIC . '/assets/js/app.js')); ?>"></script>
-    <script src="<?php echo full_url('assets/js/particles.js?v=' . filemtime(APP_PUBLIC . '/assets/js/particles.js')); ?>"></script>
 </body>
 
 </html>
