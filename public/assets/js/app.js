@@ -1,5 +1,6 @@
-// API base URL (injected from PHP via index.php)
-const API_BASE = (window.APP_BASE_URL || '') + '/';
+// API base URL (injected from PHP via a meta tag in index.php)
+const appBaseUrlMeta = document.querySelector('meta[name="app-base-url"]');
+const API_BASE = ((appBaseUrlMeta && appBaseUrlMeta.content) || window.APP_BASE_URL || '') + '/';
 
 // Global Variables
 let downloadManager = {
@@ -8,6 +9,8 @@ let downloadManager = {
     isAnalyzing: false,
     selectedFormat: null,
     qualityOptions: [],
+    imageOptions: [],
+    selectedImageIndexes: [],
     videoData: null,
     progressInterval: null
 };
@@ -133,18 +136,27 @@ function displayVideoInfo(data) {
     const resultDiv = document.getElementById('result');
 
     const qualityOptions = buildQualityOptions(data);
+    const hasVideoOptions = qualityOptions.some(format => isVideoOption(format));
+    const imageOptions = hasVideoOptions ? [] : buildImageOptions(data);
     downloadManager.qualityOptions = qualityOptions;
-    downloadManager.selectedFormat = qualityOptions.length > 0 ? qualityOptions[0] : null;
+    downloadManager.imageOptions = imageOptions;
+
+    downloadManager.selectedImageIndexes = (!hasVideoOptions && imageOptions.length > 0) ? [0] : [];
+    downloadManager.selectedFormat = downloadManager.selectedImageIndexes.length > 0
+        ? buildSelectedImagesFormat()
+        : (qualityOptions[0] || imageOptions[0] || null);
 
     const safeTitle = escapeHtml(data.title || 'Untitled Video');
     const safeThumbnail = escapeHtml(data.thumbnail || '');
     const safeDuration = escapeHtml(data.duration || '--:--');
     const safeUploader = escapeHtml(data.uploader || 'Unknown Author');
 
+    const selectedIsImage = downloadManager.selectedFormat && downloadManager.selectedFormat.type === 'image';
     const selectOptionsHtml = qualityOptions.length
-        ? qualityOptions.map((format, index) =>
-            `<option value="${index}">${escapeHtml(format.label || 'Best Quality')}</option>`).join('')
-        : '<option value="">No format available</option>';
+        ? `${imageOptions.length ? '<option value="">Pilih gambar di bawah</option>' : ''}${qualityOptions.map((format, index) =>
+            `<option value="${index}">${escapeHtml(format.label || 'Best Quality')}</option>`).join('')}`
+        : '<option value="">Pilih gambar di bawah</option>';
+    const imagePickerHtml = buildImagePickerHtml(imageOptions);
 
     const html = `
         <div class="video-preview">
@@ -168,10 +180,11 @@ function displayVideoInfo(data) {
                         </select>
                         <i class="fas fa-chevron-down"></i>
                     </div>
-                    <button class="btn-download" id="downloadBtn" ${qualityOptions.length ? '' : 'disabled'}>
-                        <i class="fas fa-download"></i> Download
+                    <button class="btn-download" id="downloadBtn" ${(qualityOptions.length || imageOptions.length) ? '' : 'disabled'}>
+                        <i class="fas fa-download"></i> <span>Download</span>
                     </button>
                 </div>
+                ${imagePickerHtml}
             </div>
         </div>
     `;
@@ -191,38 +204,49 @@ function displayVideoInfo(data) {
 
     const qualitySelect = document.getElementById('qualitySelect');
     if (qualitySelect) {
+        qualitySelect.value = selectedIsImage ? '' : '0';
         qualitySelect.addEventListener('change', event => handleQualitySelect(event.target.value));
     }
+
+    resultDiv.querySelectorAll('[data-image-checkbox]').forEach(checkbox => {
+        checkbox.addEventListener('change', () => handleImageToggle(checkbox.dataset.imageCheckbox, checkbox.checked));
+    });
 
     const downloadBtn = document.getElementById('downloadBtn');
     if (downloadBtn) {
         downloadBtn.addEventListener('click', startDownload);
     }
 
+    updateDownloadButton();
+    refreshImageSelectionUI();
+
     // Scroll to results
     resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function buildQualityOptions(data) {
-    const options = [];
-    const seen = new Set();
+    const candidates = [];
+    const seenFormatIds = new Set();
 
     const addOption = (format, fallbackType = 'video') => {
         if (!format || !format.format_id) return;
         const formatId = String(format.format_id);
-        if (seen.has(formatId)) return;
-        seen.add(formatId);
+        if (seenFormatIds.has(formatId)) return;
+        seenFormatIds.add(formatId);
 
         const type = format.type || fallbackType;
-        const ext = (format.ext || (type === 'audio' ? 'mp3' : 'mp4')).toUpperCase();
+        const ext = (format.ext || (type === 'audio' ? 'mp3' : (type === 'image' ? 'zip' : 'mp4'))).toUpperCase();
         const resolution = format.resolution || (format.height ? `${format.height}p` : 'Best');
         const bitrate = parseFloat(format.bitrate) || parseFloat(format.abr) || 0;
 
-        const label = type === 'audio'
-            ? `${bitrate ? `${Math.round(bitrate)}kbps` : 'Audio'} (${ext})`
-            : `${resolution} (${ext})`;
+        let label = `${resolution} (${ext})`;
+        if (type === 'audio') {
+            label = `Musik MP3${bitrate ? ` - ${Math.round(bitrate)}kbps` : ''}`;
+        } else if (type === 'image') {
+            label = 'Gambar ZIP';
+        }
 
-        options.push({
+        candidates.push({
             ...format,
             type,
             label
@@ -231,27 +255,214 @@ function buildQualityOptions(data) {
 
     (data.available_formats || []).forEach(format => addOption(format, format.type || 'video'));
     (data.audio_formats || []).forEach(format => addOption({ ...format, type: 'audio' }, 'audio'));
+    const hasKnownVideo = candidates.some(format => isVideoOption(format) && getVideoQualityKey(format) !== 'unknown');
+    const compactOptions = [];
+    const seenOptionKeys = new Set();
 
-    options.sort((a, b) => {
-        const heightA = parseInt(a.height, 10) || 0;
-        const heightB = parseInt(b.height, 10) || 0;
-        if (heightA !== heightB) return heightB - heightA;
-        const bitrateA = parseFloat(a.bitrate) || parseFloat(a.abr) || 0;
-        const bitrateB = parseFloat(b.bitrate) || parseFloat(b.abr) || 0;
-        return bitrateB - bitrateA;
-    });
+    candidates
+        .filter(format => !(hasKnownVideo && isVideoOption(format) && getVideoQualityKey(format) === 'unknown'))
+        .sort(compareQualityOptions)
+        .forEach(format => {
+            const key = getCompactOptionKey(format);
+            if (seenOptionKeys.has(key)) return;
+            seenOptionKeys.add(key);
+            compactOptions.push(format);
+        });
 
-    return options;
+    return compactOptions;
+}
+
+function buildImageOptions(data) {
+    return (data.image_formats || [])
+        .filter(format => format && format.format_id && format.image_url)
+        .map(format => {
+            const number = parseInt(format.image_number, 10) || ((parseInt(format.image_index, 10) || 0) + 1);
+            return {
+                ...format,
+                type: 'image',
+                ext: format.ext || 'jpg',
+                label: `Gambar ${number}`,
+            };
+        });
+}
+
+function buildImagePickerHtml(imageOptions) {
+    if (!imageOptions.length) return '';
+
+    return `
+        <div class="image-picker">
+            <div class="image-picker-grid">
+                ${imageOptions.map((image, index) => `
+                    <label class="image-choice" data-image-index="${index}" title="${escapeHtml(image.label)}">
+                        <input type="checkbox" class="image-choice-check" data-image-checkbox="${index}">
+                        <img src="${escapeHtml(image.image_url)}" alt="${escapeHtml(image.label)}" loading="lazy">
+                        <span class="image-number">${escapeHtml(String(image.image_number || index + 1))}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function compareQualityOptions(a, b) {
+    const typeRank = { video: 0, muxed: 0, combined: 0, audio: 1, image: 2 };
+    const rankA = typeRank[a.type] ?? 3;
+    const rankB = typeRank[b.type] ?? 3;
+    if (rankA !== rankB) return rankA - rankB;
+
+    const heightA = parseInt(a.height, 10) || 0;
+    const heightB = parseInt(b.height, 10) || 0;
+    if (heightA !== heightB) return heightB - heightA;
+
+    const typeScoreA = getFormatTypeScore(a);
+    const typeScoreB = getFormatTypeScore(b);
+    if (typeScoreA !== typeScoreB) return typeScoreB - typeScoreA;
+
+    const extScoreA = getExtensionScore(a.ext);
+    const extScoreB = getExtensionScore(b.ext);
+    if (extScoreA !== extScoreB) return extScoreB - extScoreA;
+
+    const bitrateA = parseFloat(a.bitrate) || parseFloat(a.abr) || 0;
+    const bitrateB = parseFloat(b.bitrate) || parseFloat(b.abr) || 0;
+    return bitrateB - bitrateA;
+}
+
+function getCompactOptionKey(format) {
+    if ((format.type || '') === 'audio') return 'audio:mp3';
+    if ((format.type || '') === 'image') return 'image:zip';
+    if (isVideoOption(format)) return `video:${getVideoQualityKey(format)}`;
+    return `${format.type || 'unknown'}:${format.format_id}`;
+}
+
+function isVideoOption(format) {
+    return ['video', 'muxed', 'combined'].includes(format.type || 'video');
+}
+
+function getVideoQualityKey(format) {
+    const width = parseInt(format.width, 10) || 0;
+    const height = parseInt(format.height, 10) || 0;
+    if (width > 0 && height > 0) return `${width}x${height}`;
+    if (height > 0) return `${height}p`;
+
+    const resolution = String(format.resolution || '').trim().toLowerCase();
+    return resolution && resolution !== 'unknown' ? resolution : 'unknown';
+}
+
+function getFormatTypeScore(format) {
+    const type = format.type || '';
+    if (type === 'combined') return 3;
+    if (type === 'muxed') return 2;
+    if (type === 'audio') return 2;
+    if (type === 'image') return 2;
+    return 1;
+}
+
+function getExtensionScore(ext) {
+    const normalized = String(ext || '').toLowerCase();
+    if (normalized === 'mp4') return 4;
+    if (normalized === 'm4a' || normalized === 'mp3') return 3;
+    if (normalized === 'webm') return 2;
+    if (normalized === 'zip') return 2;
+    return 1;
 }
 
 function handleQualitySelect(indexValue) {
+    if (indexValue === '') return;
+
     const index = parseInt(indexValue, 10);
     if (!Array.isArray(downloadManager.qualityOptions) || Number.isNaN(index)) return;
 
     const selected = downloadManager.qualityOptions[index];
     if (!selected) return;
 
+    downloadManager.selectedImageIndexes = [];
     downloadManager.selectedFormat = selected;
+    updateDownloadButton();
+    refreshImageSelectionUI();
+}
+
+function handleImageToggle(indexValue, checked) {
+    const index = parseInt(indexValue, 10);
+    if (!Array.isArray(downloadManager.imageOptions) || Number.isNaN(index)) return;
+
+    if (!downloadManager.imageOptions[index]) return;
+
+    const selectedSet = new Set(downloadManager.selectedImageIndexes || []);
+    if (checked) selectedSet.add(index);
+    else selectedSet.delete(index);
+
+    downloadManager.selectedImageIndexes = Array.from(selectedSet).sort((a, b) => a - b);
+    downloadManager.selectedFormat = downloadManager.selectedImageIndexes.length > 0
+        ? buildSelectedImagesFormat()
+        : (downloadManager.qualityOptions[0] || null);
+
+    const qualitySelect = document.getElementById('qualitySelect');
+    if (qualitySelect) qualitySelect.value = downloadManager.selectedImageIndexes.length > 0 ? '' : '0';
+
+    updateDownloadButton();
+    refreshImageSelectionUI();
+}
+
+function buildSelectedImagesFormat() {
+    const selectedImages = getSelectedImageOptions();
+    if (!selectedImages.length) return null;
+    if (selectedImages.length === 1) {
+        return {
+            ...selectedImages[0],
+            image_indexes: [...downloadManager.selectedImageIndexes],
+            selected_count: 1
+        };
+    }
+
+    return {
+        type: 'image',
+        format_id: 'images_selected',
+        ext: 'zip',
+        label: `${selectedImages.length} gambar`,
+        image_indexes: [...downloadManager.selectedImageIndexes],
+        selected_count: selectedImages.length,
+        image_count: downloadManager.imageOptions.length
+    };
+}
+
+function getSelectedImageOptions() {
+    return (downloadManager.selectedImageIndexes || [])
+        .map(index => downloadManager.imageOptions[index])
+        .filter(Boolean);
+}
+
+function updateDownloadButton() {
+    const downloadBtn = document.getElementById('downloadBtn');
+    if (!downloadBtn) return;
+    if (!downloadManager.selectedFormat) {
+        downloadBtn.disabled = true;
+        downloadBtn.innerHTML = '<i class="fas fa-download"></i> <span>Download</span>';
+        return;
+    }
+
+    downloadBtn.disabled = false;
+    const type = downloadManager.selectedFormat.type || 'video';
+    const icon = type === 'audio' ? 'fa-music' : (type === 'image' ? 'fa-images' : 'fa-download');
+    const imageNumber = parseInt(downloadManager.selectedFormat.image_number, 10) || 0;
+    const selectedCount = parseInt(downloadManager.selectedFormat.selected_count, 10) || downloadManager.selectedImageIndexes.length || 0;
+    const text = type === 'audio'
+        ? 'Download Musik'
+        : (type === 'image'
+            ? (selectedCount > 1 ? `Download ${selectedCount} Gambar` : `Download Gambar${imageNumber ? ` ${imageNumber}` : ''}`)
+            : 'Download');
+
+    downloadBtn.innerHTML = `<i class="fas ${icon}"></i> <span>${text}</span>`;
+}
+
+function refreshImageSelectionUI() {
+    const selectedSet = new Set(downloadManager.selectedImageIndexes || []);
+    document.querySelectorAll('[data-image-index]').forEach(choice => {
+        const index = parseInt(choice.dataset.imageIndex, 10);
+        const isSelected = selectedSet.has(index);
+        const checkbox = choice.querySelector('[data-image-checkbox]');
+        choice.classList.toggle('is-selected', isSelected);
+        if (checkbox) checkbox.checked = isSelected;
+    });
 }
 
 function escapeHtml(value) {
@@ -286,7 +497,11 @@ async function startDownload() {
     formData.append('format_id', downloadManager.selectedFormat.format_id);
     formData.append('format_type', downloadManager.selectedFormat.type || 'video');
     formData.append('quality', downloadManager.selectedFormat.height || 'best');
-    formData.append('format_data', JSON.stringify(downloadManager.selectedFormat));
+    const selectedFormatData = { ...downloadManager.selectedFormat };
+    if (downloadManager.videoData && downloadManager.videoData.title) {
+        selectedFormatData.title = downloadManager.videoData.title;
+    }
+    formData.append('format_data', JSON.stringify(selectedFormatData));
 
     try {
         const response = await fetch(API_BASE + 'api/index.php?action=download', {
@@ -438,6 +653,8 @@ function resetAnalysisState() {
     downloadManager.isAnalyzing = false;
     downloadManager.selectedFormat = null;
     downloadManager.qualityOptions = [];
+    downloadManager.imageOptions = [];
+    downloadManager.selectedImageIndexes = [];
     downloadManager.videoData = null;
 
     const submitBtn = document.getElementById('submitBtn');

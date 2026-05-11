@@ -85,6 +85,9 @@ if ($err = find_last_error_line($lines)) {
         if ($rawStatus === 'finished') {
             $status = 'processing';
             $progress = 100.0;
+        } elseif ($rawStatus === 'processing') {
+            $status = 'processing';
+            $progress = max($progress, 95.0);
         }
     } else {
         $lastLines = array_slice($lines, -10);
@@ -138,7 +141,9 @@ $response = [
 
 switch ($status) {
     case 'processing':
-        $response['message'] = 'Menggabungkan video dan audio...';
+        $response['message'] = (($metadata['format'] ?? '') === 'image')
+            ? 'Menyiapkan gambar...'
+            : 'Menggabungkan video dan audio...';
         break;
     case 'finished':
         $response['message'] = 'Download selesai!';
@@ -147,7 +152,9 @@ switch ($status) {
         $response['message'] = $err ?? 'Terjadi kesalahan saat download';
         break;
     default:
-        $response['message'] = 'Mendownload...';
+        $response['message'] = (($metadata['format'] ?? '') === 'image')
+            ? 'Mendownload gambar...'
+            : 'Mendownload...';
 }
 
 json_response($response);
@@ -242,6 +249,13 @@ function find_completed_file(string $jobId, array $metadata = []): ?array {
     }
 
     if (!empty($finalCandidates)) {
+        if (($metadata['format'] ?? '') === 'image') {
+            $zipCandidates = array_values(array_filter($finalCandidates, static function (string $file): bool {
+                return strtolower((string) pathinfo($file, PATHINFO_EXTENSION)) === 'zip';
+            }));
+            if (!empty($zipCandidates)) return pick_stable_largest_file($zipCandidates, 1);
+        }
+
         return pick_stable_largest_file($finalCandidates);
     }
 
@@ -251,11 +265,11 @@ function find_completed_file(string $jobId, array $metadata = []): ?array {
     return pick_stable_largest_file($intermediateCandidates);
 }
 
-function pick_stable_largest_file(array $candidates): ?array {
+function pick_stable_largest_file(array $candidates, int $minBytes = 1024): ?array {
     $best = null;
     foreach ($candidates as $file) {
         $size1 = @filesize($file);
-        if ($size1 === false || $size1 < 1024) continue;
+        if ($size1 === false || $size1 < $minBytes) continue;
 
         usleep(120000);
         clearstatcache(true, $file);

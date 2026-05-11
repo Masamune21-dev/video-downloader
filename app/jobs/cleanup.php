@@ -161,6 +161,9 @@ function file_belongs_to_active_job(string $basename, array $activeJobs): bool
         if ($basename === $jobId || str_starts_with($basename, $jobId . '.')) {
             return true;
         }
+        if (str_starts_with($basename, $jobId . '_')) {
+            return true;
+        }
     }
     return false;
 }

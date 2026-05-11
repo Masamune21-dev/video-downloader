@@ -5,6 +5,7 @@ if (empty($_POST['url'])) {
 }
 
 $rawUrl = trim((string) $_POST['url']);
+$downloadUrl = normalize_tiktok_photo_url_for_ytdlp($rawUrl);
 $urlParts = parse_url($rawUrl);
 $allowedSchemes = ['http', 'https'];
 
@@ -17,7 +18,7 @@ $formatType = trim((string) ($_POST['format_type'] ?? 'video'));
 $quality    = $_POST['quality'] ?? '';
 $formatData = $_POST['format_data'] ?? '';
 
-$allowedFormatTypes = ['video', 'audio', 'muxed', 'combined'];
+$allowedFormatTypes = ['video', 'audio', 'image', 'muxed', 'combined'];
 if (!in_array($formatType, $allowedFormatTypes, true)) {
     json_response(['status' => 'error', 'message' => 'Tipe format tidak valid'], 400);
 }
@@ -44,6 +45,16 @@ function is_mp4_compatible_audio_codec(string $codec): bool {
     $codec = strtolower(trim($codec));
     if ($codec === '') return false;
     return $codec === 'aac' || str_starts_with($codec, 'mp4a');
+}
+
+function php_cli_bin(): string {
+    $candidate = trim((string) @shell_exec('command -v php 2>/dev/null'));
+    if ($candidate !== '' && is_executable($candidate)) return $candidate;
+
+    $candidate = PHP_BINDIR . '/php';
+    if (is_executable($candidate)) return $candidate;
+
+    return PHP_BINARY;
 }
 
 try {
@@ -105,16 +116,29 @@ if (defined('YTDLP_HTTP_CHUNK_SIZE') && is_string(YTDLP_HTTP_CHUNK_SIZE) && trim
 
 $formatSelector = '';
 $expectsMerge = false;
-if ($formatType === 'audio') {
+if ($formatType === 'image') {
+    if ($formatId !== '' && $formatId !== 'images_selected' && !preg_match('/^image_\d{3}$/', $formatId)) {
+        json_response(['status' => 'error', 'message' => 'Format gambar tidak valid'], 400);
+    }
+
+    $cmdParts = [
+        php_cli_bin(),
+        APP_ROOT . '/app/jobs/process_images.php',
+        $jobId,
+    ];
+    $formatSelector = 'all_thumbnails';
+    $imageIndexes = image_indexes_from_format_info($formatInfo, $formatId);
+
+} elseif ($formatType === 'audio') {
     $cmdParts[] = '-x';
     $cmdParts[] = '--audio-format';
     $cmdParts[] = 'mp3';
     $cmdParts[] = '--audio-quality';
     $cmdParts[] = '0';
 
-    $audioSelector = 'bestaudio';
+    $audioSelector = 'bestaudio/best';
     if ($formatId !== '' && is_valid_format_id($formatId)) {
-        $audioSelector = $formatId;
+        $audioSelector = $formatId === 'bestaudio' ? 'bestaudio/best' : $formatId;
     }
 
     $formatSelector = $audioSelector;
@@ -172,23 +196,33 @@ if ($formatType === 'audio') {
     }
 }
 
-$cmdParts[] = '-f';
-$cmdParts[] = $formatSelector;
+if ($formatType !== 'image') {
+    $cmdParts[] = '-f';
+    $cmdParts[] = $formatSelector;
 
-$cmdParts[] = '-o';
-$cmdParts[] = $outputTpl;
-$cmdParts[] = $rawUrl;
+    $cmdParts[] = '-o';
+    $cmdParts[] = $outputTpl;
+    $cmdParts[] = $downloadUrl;
+}
+
+$metadataImageIndexes = !empty($imageIndexes ?? [])
+    ? array_values($imageIndexes)
+    : [image_index_from_format_id($formatId)];
 
 @file_put_contents($progressFile, '');
 
 $metadata = [
     'job_id' => $jobId,
     'url' => $rawUrl,
+    'download_url' => $downloadUrl,
     'format_id' => $formatId,
     'format' => $formatType,
     'quality' => $quality,
     'format_selector' => $formatSelector,
     'expects_merge' => $expectsMerge,
+    'title' => (string) ($formatInfo['title'] ?? ''),
+    'image_index' => $metadataImageIndexes[0],
+    'image_indexes' => $formatType === 'image' ? $metadataImageIndexes : [],
     'start' => time(),
     'command' => $cmdParts,
     'progress_file' => $progressFile,
@@ -223,3 +257,30 @@ json_response([
     'message' => 'Download dimulai',
     'progress_url' => $progressUrl,
 ]);
+
+function image_index_from_format_id(string $formatId): int {
+    if (preg_match('/^image_(\d{3})$/', $formatId, $matches)) {
+        return max(0, (int) $matches[1] - 1);
+    }
+    return 0;
+}
+
+function image_indexes_from_format_info(array $formatInfo, string $formatId): array {
+    $indexes = [];
+
+    if (isset($formatInfo['image_indexes']) && is_array($formatInfo['image_indexes'])) {
+        foreach ($formatInfo['image_indexes'] as $index) {
+            if (!is_numeric($index)) continue;
+            $indexes[] = max(0, (int) $index);
+        }
+    } elseif (isset($formatInfo['image_index']) && is_numeric($formatInfo['image_index'])) {
+        $indexes[] = max(0, (int) $formatInfo['image_index']);
+    } else {
+        $indexes[] = image_index_from_format_id($formatId);
+    }
+
+    $indexes = array_values(array_unique($indexes));
+    sort($indexes, SORT_NUMERIC);
+
+    return array_slice($indexes, 0, 50);
+}

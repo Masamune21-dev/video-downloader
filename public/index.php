@@ -7,6 +7,7 @@ require_once __DIR__ . '/../app/bootstrap.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-base-url" content="<?php echo htmlspecialchars(rtrim(BASE_URL, '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <title>Video Downloader - Dark Neon Landing Page</title>
     <meta name="description"
         content="Modern dark neon video downloader UI for YouTube, TikTok, Instagram, Twitter, and more.">
@@ -25,14 +26,14 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
     <!-- Styles -->
     <link rel="icon" type="image/x-icon" href="<?php echo full_url('assets/favicon.ico'); ?>">
-    <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css'); ?>">
+    <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>">
 
     <!-- Theme Color -->
     <meta name="theme-color" content="#0f0f23">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Preload critical CSS -->
-    <link rel="preload" href="<?php echo full_url('assets/css/glass.css'); ?>" as="style">
+    <link rel="preload" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>" as="style">
 
 </head>
 
@@ -209,13 +210,10 @@ require_once __DIR__ . '/../app/bootstrap.php';
         </div>
     </div>
 
-    <!-- App Config -->
-    <script>window.APP_BASE_URL = <?php echo json_encode(rtrim(BASE_URL, '/')); ?>;</script>
-
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
-    <script src="<?php echo full_url('assets/js/app.js'); ?>"></script>
-    <script src="<?php echo full_url('assets/js/particles.js'); ?>"></script>
+    <script src="<?php echo full_url('assets/js/app.js?v=' . filemtime(APP_PUBLIC . '/assets/js/app.js')); ?>"></script>
+    <script src="<?php echo full_url('assets/js/particles.js?v=' . filemtime(APP_PUBLIC . '/assets/js/particles.js')); ?>"></script>
 </body>
 
 </html>

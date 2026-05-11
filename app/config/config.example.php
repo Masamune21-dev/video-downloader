@@ -149,11 +149,11 @@ function security_csp(): string
         "form-action 'self'",
         "frame-ancestors 'self'",
         "object-src 'none'",
-        "script-src 'self' https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
         "img-src 'self' https: data:",
-        "connect-src 'self'",
+        "connect-src 'self' https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://cloudflareinsights.com",
     ]);
 }
 

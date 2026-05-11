@@ -3,7 +3,7 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
 set_time_limit(0);
 
-$allowedExt = ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac'];
+$allowedExt = ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac', 'zip', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'bmp'];
 
 $file = $_GET['file'] ?? '';
 $filename = basename($file);

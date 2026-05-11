@@ -43,3 +43,19 @@ function is_process_running(int $pid): bool {
     @exec('ps -p ' . $pid . ' > /dev/null 2>&1; echo $?', $output);
     return trim((string) ($output[0] ?? '1')) === '0';
 }
+
+function normalize_tiktok_photo_url_for_ytdlp(string $url): string {
+    $parts = parse_url($url);
+    if (!is_array($parts)) return $url;
+
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    $path = (string) ($parts['path'] ?? '');
+    if (!str_contains($host, 'tiktok.com')) return $url;
+
+    if (!preg_match('~^/(@[\w.-]+)/photo/(\d+)~', $path, $matches)) {
+        return $url;
+    }
+
+    $scheme = (string) ($parts['scheme'] ?? 'https');
+    return $scheme . '://' . $host . '/' . $matches[1] . '/video/' . $matches[2];
+}
