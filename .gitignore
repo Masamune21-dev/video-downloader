@@ -1,0 +1,41 @@
+# PHP
+/vendor/
+/node_modules/
+
+# Sensitive config / secrets
+.env
+.env.*
+cookies.txt
+
+# App config (copy from example)
+app/config/config.php
+config.php
+
+# Logs & cache
+*.log
+*.pid
+*.lock
+
+# Runtime artifacts
+storage/temp/
+temp/
+cache/
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Downloads / large artifacts (keep out of git)
+*.mp4
+*.mkv
+*.webm
+*.mp3
+*.m4a
+*.opus
+*.ogg
+*.wav
+*.flac
+
+# Local-only folders
+video-downloader-old/

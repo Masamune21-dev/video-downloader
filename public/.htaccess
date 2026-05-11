@@ -1,0 +1,47 @@
+# Video Downloader - public/.htaccess
+# IMPORTANT: Pastikan DocumentRoot/Root folder web server mengarah ke folder ini (../public).
+
+# No directory listing
+Options -Indexes
+
+# Disable content negotiation (can cause unexpected file exposure/rewrites)
+Options -MultiViews
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block access to dotfiles/dot-directories (except Let's Encrypt /.well-known)
+    RewriteCond %{REQUEST_URI} !^/\.well-known/
+    RewriteRule (^|/)\. - [F,L]
+
+    # Serve existing files/directories as-is
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Front controller
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+<IfModule mod_headers.c>
+    # Basic hardening headers (safe defaults)
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "same-origin"
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # CORS (optional). Keep your previous behavior (adjust/remove if not needed).
+    Header set Access-Control-Allow-Origin "https://vid.masamune.my.id"
+    Header set Access-Control-Allow-Credentials "true"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
+
+# PHP settings (only for mod_php). If you use php-fpm, set these in php.ini or pool config.
+<IfModule mod_php.c>
+    php_value upload_max_filesize 500M
+    php_value post_max_size 500M
+    php_value max_execution_time 300
+    php_value memory_limit 256M
+</IfModule>
+
