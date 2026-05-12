@@ -59,3 +59,133 @@ function normalize_tiktok_photo_url_for_ytdlp(string $url): string {
     $scheme = (string) ($parts['scheme'] ?? 'https');
     return $scheme . '://' . $host . '/' . $matches[1] . '/video/' . $matches[2];
 }
+
+function get_file_statistics(): array {
+    $videosDir = TEMP_FILES;
+    
+    $videos = 0;
+    $audios = 0;
+    $images = 0;
+    $totalSize = 0;
+    
+    if (!is_dir($videosDir)) {
+        return [
+            'videos' => 0,
+            'audios' => 0,
+            'images' => 0,
+            'total' => 0,
+            'totalSize' => 0
+        ];
+    }
+    
+    $videoExts = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'wmv', 'mpeg', 'mpg', '3gp'];
+    $audioExts = ['mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'flac', 'wma', 'aiff'];
+    $imageExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'bmp', 'ico', 'svg', 'tiff'];
+    
+    $files = @scandir($videosDir);
+    if (!is_array($files)) {
+        return [
+            'videos' => 0,
+            'audios' => 0,
+            'images' => 0,
+            'total' => 0,
+            'totalSize' => 0
+        ];
+    }
+    
+    foreach ($files as $file) {
+        if ($file === '.' || $file === '..' || $file === '.htaccess') continue;
+        
+        $filePath = $videosDir . $file;
+        if (!is_file($filePath)) continue;
+        
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $fileSize = filesize($filePath);
+        
+        if (!$fileSize) continue;
+        
+        $totalSize += $fileSize;
+        
+        if (in_array($ext, $videoExts, true)) {
+            $videos++;
+        } elseif (in_array($ext, $audioExts, true)) {
+            $audios++;
+        } elseif (in_array($ext, $imageExts, true)) {
+            $images++;
+        }
+    }
+    
+    return [
+        'videos' => $videos,
+        'audios' => $audios,
+        'images' => $images,
+        'total' => $videos + $audios + $images,
+        'totalSize' => $totalSize
+    ];
+}
+
+function get_download_history(): array {
+    $historyFile = TEMP_PROGRESS . '.download-history.json';
+    
+    if (!is_file($historyFile)) {
+        return [
+            'videos' => 0,
+            'audios' => 0,
+            'images' => 0,
+            'total' => 0
+        ];
+    }
+    
+    $content = @file_get_contents($historyFile);
+    if (!$content) {
+        return [
+            'videos' => 0,
+            'audios' => 0,
+            'images' => 0,
+            'total' => 0
+        ];
+    }
+    
+    $data = @json_decode($content, true);
+    if (!is_array($data)) {
+        return [
+            'videos' => 0,
+            'audios' => 0,
+            'images' => 0,
+            'total' => 0
+        ];
+    }
+    
+    return [
+        'videos' => (int) ($data['videos'] ?? 0),
+        'audios' => (int) ($data['audios'] ?? 0),
+        'images' => (int) ($data['images'] ?? 0),
+        'total' => (int) ($data['total'] ?? 0)
+    ];
+}
+
+function log_download(string $filename, string $type = 'video'): bool {
+    $historyFile = TEMP_PROGRESS . '.download-history.json';
+    
+    $types = ['video', 'audio', 'image'];
+    if (!in_array($type, $types, true)) {
+        $type = 'video';
+    }
+    
+    // Map type to correct key name (singular to plural)
+    $keyMap = [
+        'video' => 'videos',
+        'audio' => 'audios',
+        'image' => 'images'
+    ];
+    $historyKey = $keyMap[$type] ?? 'videos';
+    
+    $history = get_download_history();
+    
+    $history[$historyKey]++;
+    $history['total']++;
+    
+    $json = json_encode($history, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    
+    return @file_put_contents($historyFile, $json) !== false;
+}

@@ -25,8 +25,8 @@ require_once __DIR__ . '/../app/bootstrap.php';
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 
     <!-- Styles -->
-    <link rel="icon" type="image/x-icon" href="<?php echo full_url('favicon.ico'); ?>">
-    <link rel="shortcut icon" href="<?php echo full_url('favicon.ico'); ?>">
+    <link rel="icon" type="image/x-icon" href="<?php echo full_url('assets/favicon.ico'); ?>">
+    <link rel="shortcut icon" href="<?php echo full_url('assets/favicon.ico'); ?>">
     <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>">
 
     <!-- Theme Color -->
@@ -56,6 +56,54 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
         <!-- Main Content -->
         <main class="main-content">
+
+            <!-- Statistics Section -->
+            <section class="stats-section">
+                <?php
+                $history = get_download_history();
+                ?>
+                <div class="stats-container">
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 class="stat-title">Videos</h3>
+                            <p class="stat-value"><?php echo $history['videos']; ?></p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-music"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 class="stat-title">Audio Files</h3>
+                            <p class="stat-value"><?php echo $history['audios']; ?></p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-image"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 class="stat-title">Images</h3>
+                            <p class="stat-value"><?php echo $history['images']; ?></p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 class="stat-title">Total</h3>
+                            <p class="stat-value"><?php echo $history['total']; ?></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Download Section -->
             <section class="download-section">

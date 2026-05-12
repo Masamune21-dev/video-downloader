@@ -28,6 +28,18 @@ if ($completed !== null && !$isRunning) {
         $completed['size'] = (int) (@filesize($renamed) ?: $completed['size']);
     }
 
+    // Log download to history
+    $downloadType = 'video';
+    if (!empty($metadata['format'])) {
+        $formatType = strtolower(trim((string) $metadata['format']));
+        if ($formatType === 'audio') {
+            $downloadType = 'audio';
+        } elseif ($formatType === 'image') {
+            $downloadType = 'image';
+        }
+    }
+    log_download(basename($completed['path']), $downloadType);
+
     @unlink($progressFile);
     @unlink($pidFile);
     @unlink($metadataFile);
