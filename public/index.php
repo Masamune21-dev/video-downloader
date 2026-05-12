@@ -25,7 +25,8 @@ require_once __DIR__ . '/../app/bootstrap.php';
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 
     <!-- Styles -->
-    <link rel="icon" type="image/x-icon" href="<?php echo full_url('assets/favicon.ico'); ?>">
+    <link rel="icon" type="image/x-icon" href="<?php echo full_url('favicon.ico'); ?>">
+    <link rel="shortcut icon" href="<?php echo full_url('favicon.ico'); ?>">
     <link rel="stylesheet" href="<?php echo full_url('assets/css/glass.css?v=' . filemtime(APP_PUBLIC . '/assets/css/glass.css')); ?>">
 
     <!-- Theme Color -->

@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', function () {
 function initializeApp() {
     // Initialize theme
     initTheme();
+    setupClickSparkles();
 }
 
 function setupEventListeners() {
@@ -71,6 +72,37 @@ function setupEventListeners() {
     if (hideProgressBtn) {
         hideProgressBtn.addEventListener('click', hideProgressModal);
     }
+}
+
+function setupClickSparkles() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return;
+    }
+
+    const colors = [
+        ['#ffe500', '#a6faff'],
+        ['#ffa6f6', '#ffe500'],
+        ['#a6faff', '#ffa6f6']
+    ];
+    let colorIndex = 0;
+
+    document.addEventListener('pointerdown', event => {
+        if (event.pointerType && event.pointerType !== 'mouse') return;
+
+        const sparkle = document.createElement('span');
+        const colorPair = colors[colorIndex % colors.length];
+        colorIndex += 1;
+
+        sparkle.className = 'click-sparkle';
+        sparkle.style.left = `${event.clientX}px`;
+        sparkle.style.top = `${event.clientY}px`;
+        sparkle.style.setProperty('--sparkle-color', colorPair[0]);
+        sparkle.style.setProperty('--sparkle-accent', colorPair[1]);
+
+        document.body.appendChild(sparkle);
+        sparkle.addEventListener('animationend', () => sparkle.remove(), { once: true });
+        window.setTimeout(() => sparkle.remove(), 700);
+    }, { passive: true });
 }
 
 // ===== FORM HANDLING =====

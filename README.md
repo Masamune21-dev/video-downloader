@@ -4,7 +4,7 @@ A **lightweight video downloader web application** built with **native PHP** run
 
 This project allows you to download videos and audio from **YouTube, TikTok, Instagram, Facebook, and 100+ supported platforms** with quality up to **4K (2160p)** — **without using any PHP framework**.
 
-Designed for **VPS and self-hosted servers**, focusing on **performance, simplicity, and full control**.
+Designed for **VPS and self-hosted servers**, focusing on **performance, simplicity, full control**, and a playful **DL-chan comic / neo-brutal UI**.
 
 ---
 
@@ -13,9 +13,13 @@ Designed for **VPS and self-hosted servers**, focusing on **performance, simplic
 - 🎬 Download videos from **100+ platforms**
 - 🎧 Video & audio formats (**MP4, MP3, WebM, MKV**)
 - 📺 Quality up to **4K / Ultra HD**
+- 🖼️ Image post selection and ZIP download when supported
 - ⚡ Fast server-side processing
 - 🔒 No user data stored
-- 🧊 Modern **glassmorphism UI**
+- 🎨 DL-chan inspired **comic neo-brutal UI**
+- 🖱️ Custom comic cursor for default and clickable states
+- ✨ Lightweight UI animations: pop-in, button pop, platform wiggle, loading shimmer, and click sparkle
+- 📱 Responsive layout for desktop and mobile
 - ♾️ Unlimited downloads *(server-dependent)*
 
 ---
@@ -26,6 +30,8 @@ Designed for **VPS and self-hosted servers**, focusing on **performance, simplic
 - **Apache Web Server**
 - **yt-dlp**
 - **HTML5 / CSS3 / JavaScript**
+- **Font Awesome** icons
+- **Toastify JS** notifications
 - **FFmpeg** *(recommended for merging streams)*
 
 ---
@@ -131,6 +137,10 @@ video-downloader/
 │   ├── download.php
 │   ├── api/
 │   └── assets/
+│       ├── favicon.ico
+│       ├── css/
+│       ├── js/
+│       └── img/
 ├── storage/
 │   └── temp/
 └── README.md
@@ -144,13 +154,17 @@ video-downloader/
 
 - PHP validates the input
 
-- PHP executes yt-dlp via CLI
+- PHP executes yt-dlp via CLI to analyze metadata and formats
 
-- yt-dlp fetches available formats
+- yt-dlp fetches available video, audio, or image formats
 
-- Selected format is downloaded / merged
+- User selects quality, audio, or image options in the UI
+
+- Selected format is downloaded, merged, or packaged
 
 - File is served to the user
+
+- Progress is reported through polling and shown in the comic-styled progress modal
 
 ---
 
@@ -207,6 +221,13 @@ sudo chmod -R 755 video-downloader
 - Check Apache error log:
 ```bash
 sudo tail -f /var/log/apache2/error.log
+```
+
+### ❌ UI changes not visible
+- The app appends `filemtime()` versions to CSS and JS assets.
+- If the browser still shows old styling, hard refresh the page:
+```bash
+Ctrl + F5
 ```
 
 ---
