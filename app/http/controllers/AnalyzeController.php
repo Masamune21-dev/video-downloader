@@ -16,6 +16,9 @@ if (!$urlParts || empty($urlParts['scheme']) || !in_array(strtolower((string)$ur
     json_response(['status' => 'error', 'message' => 'URL tidak valid'], 400);
 }
 
+// Resolve share links first so the /photo/ slideshow detection below sees a
+// real path instead of an opaque vt.tiktok.com token (result is cached).
+$sourceUrl  = expand_tiktok_short_url($urlRaw);
 $analyzeUrl = normalize_tiktok_photo_url_for_ytdlp($urlRaw);
 
 $cmdParts = [
@@ -186,7 +189,7 @@ if (empty($audioFormats) && $hasAnyAudio) {
     ];
 }
 
-$imageFormats = build_image_formats($data, $urlRaw, $analyzeUrl, empty($availableFormats));
+$imageFormats = build_image_formats($data, $sourceUrl, $analyzeUrl, empty($availableFormats));
 
 json_response([
     'status' => 'success',
@@ -320,6 +323,7 @@ function analyze_extract_tiktok_image_groups(string $url): array {
         '__UNIVERSAL_DATA_FOR_REHYDRATION__',
         'SIGI_STATE',
         '__NEXT_DATA__',
+        'api-data', // where the mobile page currently carries imagePost
     ] as $scriptId) {
         if (preg_match('~<script[^>]+id=["\']' . preg_quote($scriptId, '~') . '["\'][^>]*>(.*?)</script>~is', $html, $match)) {
             $jsonBlobs[] = html_entity_decode(trim($match[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -354,7 +358,7 @@ function analyze_fetch_tiktok_page(string $url): string {
         CURLOPT_MAXREDIRS => 5,
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 30,
-        CURLOPT_USERAGENT => analyze_image_download_user_agent(),
+        CURLOPT_USERAGENT => tiktok_browser_user_agent(),
         CURLOPT_REFERER => 'https://www.tiktok.com/',
         CURLOPT_HTTPHEADER => [
             'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

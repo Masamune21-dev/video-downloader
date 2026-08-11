@@ -30,6 +30,15 @@ if ($title === '') $title = 'images';
 
 $selectedImageIndexes = image_indexes_from_metadata($metadata);
 $imageFiles = [];
+
+// Without curl the TikTok scraper below is skipped and we quietly fall back to
+// yt-dlp's cover thumbnail — the user asks for a 4-image slideshow and gets one
+// duplicated cover. Fail loudly instead of handing back the wrong pictures.
+if (is_tiktok_source($rawUrl) && !function_exists('curl_init')) {
+    fwrite(STDERR, 'ERROR: Ekstensi PHP curl tidak aktif di PHP CLI ' . PHP_VERSION . "\n");
+    exit(1);
+}
+
 if (is_tiktok_source($rawUrl)) {
     emit_image_progress('downloading', 5, 'Mencari gambar TikTok...');
     $imageGroups = extract_tiktok_image_groups($rawUrl);
@@ -190,6 +199,7 @@ function extract_tiktok_image_groups(string $url): array {
         '__UNIVERSAL_DATA_FOR_REHYDRATION__',
         'SIGI_STATE',
         '__NEXT_DATA__',
+        'api-data', // where the mobile page currently carries imagePost
     ] as $scriptId) {
         if (preg_match('~<script[^>]+id=["\']' . preg_quote($scriptId, '~') . '["\'][^>]*>(.*?)</script>~is', $html, $match)) {
             $jsonBlobs[] = html_entity_decode(trim($match[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -224,7 +234,7 @@ function fetch_tiktok_page(string $url): string {
         CURLOPT_MAXREDIRS => 5,
         CURLOPT_CONNECTTIMEOUT => 15,
         CURLOPT_TIMEOUT => 30,
-        CURLOPT_USERAGENT => image_download_user_agent(),
+        CURLOPT_USERAGENT => tiktok_browser_user_agent(),
         CURLOPT_REFERER => 'https://www.tiktok.com/',
         CURLOPT_HTTPHEADER => [
             'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

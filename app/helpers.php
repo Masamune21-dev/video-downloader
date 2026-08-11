@@ -44,13 +44,87 @@ function is_process_running(int $pid): bool {
     return trim((string) ($output[0] ?? '1')) === '0';
 }
 
+/**
+ * TikTok mobile-share links (vt./vm.tiktok.com, /t/XXXX) hide the real path
+ * behind a redirect, so a /photo/ slideshow looks like an ordinary link until
+ * it is resolved. yt-dlp follows the redirect itself but then rejects the
+ * /photo/ URL ("Unsupported URL"), so we must resolve it here and rewrite it
+ * before yt-dlp ever sees it.
+ *
+ * The result is cached: analyze and download normalize the same URL, and
+ * TikTok throttles repeated hits from one IP.
+ */
+function expand_tiktok_short_url(string $url): string {
+    $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?: ''));
+    $path = (string) (parse_url($url, PHP_URL_PATH) ?: '');
+
+    if (!str_contains($host, 'tiktok.com')) return $url;
+
+    $isShortLink = in_array($host, ['vt.tiktok.com', 'vm.tiktok.com'], true)
+        || str_starts_with($path, '/t/');
+    if (!$isShortLink || !function_exists('curl_init')) return $url;
+
+    $cacheFile = TEMP_CACHE . 'shorturl_' . sha1($url) . '.txt';
+    if (is_file($cacheFile) && (time() - (int) @filemtime($cacheFile)) < 86400) {
+        $cached = trim((string) @file_get_contents($cacheFile));
+        if ($cached !== '') return $cached;
+    }
+
+    $ch = curl_init($url);
+    if ($ch === false) return $url;
+
+    curl_setopt_array($ch, [
+        CURLOPT_NOBODY         => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_USERAGENT      => tiktok_browser_user_agent(),
+    ]);
+
+    curl_exec($ch);
+    $effective = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    curl_close($ch);
+
+    // Only trust a redirect that stayed on TikTok; anything else is not ours.
+    $effectiveHost = strtolower((string) (parse_url($effective, PHP_URL_HOST) ?: ''));
+    if ($effective === '' || !str_contains($effectiveHost, 'tiktok.com')) {
+        return $url;
+    }
+
+    @file_put_contents($cacheFile, $effective);
+
+    return $effective;
+}
+
+/**
+ * TikTok answers a desktop UA from a datacenter IP with an empty JS shell +
+ * captcha challenge, which is why slideshow scraping used to find nothing and
+ * fall back to the single cover thumbnail. A mobile UA still gets the real
+ * server-rendered page with the full imagePost payload, so it is required here
+ * rather than merely preferred — do not swap it back to a desktop string.
+ */
+function tiktok_browser_user_agent(): string {
+    return 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'
+        . ' (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+}
+
 function normalize_tiktok_photo_url_for_ytdlp(string $url): string {
     $parts = parse_url($url);
     if (!is_array($parts)) return $url;
 
     $host = strtolower((string) ($parts['host'] ?? ''));
-    $path = (string) ($parts['path'] ?? '');
     if (!str_contains($host, 'tiktok.com')) return $url;
+
+    // A share link has no /photo/ in its path yet — resolve it before matching.
+    $url = expand_tiktok_short_url($url);
+
+    $parts = parse_url($url);
+    if (!is_array($parts)) return $url;
+
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    $path = (string) ($parts['path'] ?? '');
 
     if (!preg_match('~^/(@[\w.-]+)/photo/(\d+)~', $path, $matches)) {
         return $url;

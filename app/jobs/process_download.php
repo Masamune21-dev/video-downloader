@@ -47,7 +47,20 @@ function is_mp4_compatible_audio_codec(string $codec): bool {
     return $codec === 'aac' || str_starts_with($codec, 'mp4a');
 }
 
+/**
+ * Background jobs need the same extensions as the web app (curl to scrape
+ * TikTok slideshows, zip to pack them). `php` on PATH is not necessarily the
+ * version serving the site — on this box the web runs 8.3 with curl+zip while
+ * /usr/bin/php is 8.4 with neither, which silently degraded image jobs to a
+ * single cover thumbnail. So prefer the CLI matching the running version.
+ */
 function php_cli_bin(): string {
+    $version = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+
+    foreach ([PHP_BINDIR . '/php' . $version, '/usr/bin/php' . $version] as $candidate) {
+        if (is_executable($candidate)) return $candidate;
+    }
+
     $candidate = trim((string) @shell_exec('command -v php 2>/dev/null'));
     if ($candidate !== '' && is_executable($candidate)) return $candidate;
 

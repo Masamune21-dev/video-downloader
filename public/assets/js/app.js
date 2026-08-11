@@ -139,11 +139,16 @@ async function handleFormSubmit(e) {
             body: new URLSearchParams({ url })
         });
 
-        if (!response.ok) throw new Error('Network response was not ok');
+        // The API reports failures as JSON with a real reason (unsupported URL,
+        // private video, ...) on a 4xx/5xx status. Read the body first so the
+        // user sees that reason instead of a generic network error.
+        const data = await response.json().catch(() => null);
 
-        const data = await response.json();
+        if (!data) {
+            throw new Error('Server tidak merespons dengan benar. Silakan coba lagi.');
+        }
 
-        if (data.status !== 'success') {
+        if (!response.ok || data.status !== 'success') {
             throw new Error(data.message || 'Gagal menganalisis video');
         }
 
