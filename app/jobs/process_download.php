@@ -13,10 +13,13 @@ if (!$urlParts || empty($urlParts['scheme']) || !in_array(strtolower((string)$ur
     json_response(['status' => 'error', 'message' => 'URL tidak valid'], 400);
 }
 
-$formatId   = trim((string) ($_POST['format_id'] ?? ''));
-$formatType = trim((string) ($_POST['format_type'] ?? 'video'));
-$quality    = $_POST['quality'] ?? '';
-$formatData = $_POST['format_data'] ?? '';
+$formatId    = trim((string) ($_POST['format_id'] ?? ''));
+$formatType  = trim((string) ($_POST['format_type'] ?? 'video'));
+$quality     = $_POST['quality'] ?? '';
+$formatData  = $_POST['format_data'] ?? '';
+// Output preferences (added for multi-format support).
+$container   = strtolower(trim((string) ($_POST['container'] ?? 'mp4')));      // mp4 | mkv | webm
+$audioFormat = strtolower(trim((string) ($_POST['audio_format'] ?? 'mp3')));   // mp3 | m4a | opus | flac | wav
 
 $allowedFormatTypes = ['video', 'audio', 'image', 'muxed', 'combined'];
 if (!in_array($formatType, $allowedFormatTypes, true)) {
@@ -143,70 +146,60 @@ if ($formatType === 'image') {
     $imageIndexes = image_indexes_from_format_info($formatInfo, $formatId);
 
 } elseif ($formatType === 'audio') {
+    // Audio: user-chosen output format (mp3 default). yt-dlp copies the stream
+    // when the source already matches (e.g. opus/m4a) and only re-encodes when
+    // it must, so quality is preserved where possible.
+    $allowedAudio = ['mp3', 'm4a', 'opus', 'flac', 'wav'];
+    $audioFmt = in_array($audioFormat, $allowedAudio, true) ? $audioFormat : 'mp3';
+
     $cmdParts[] = '-x';
     $cmdParts[] = '--audio-format';
-    $cmdParts[] = 'mp3';
-    $cmdParts[] = '--audio-quality';
-    $cmdParts[] = '0';
-
-    $audioSelector = 'bestaudio/best';
-    if ($formatId !== '' && is_valid_format_id($formatId)) {
-        $audioSelector = $formatId === 'bestaudio' ? 'bestaudio/best' : $formatId;
+    $cmdParts[] = $audioFmt;
+    if (in_array($audioFmt, ['mp3', 'm4a', 'opus'], true)) {
+        // --audio-quality only applies to lossy encoders; 0 = best.
+        $cmdParts[] = '--audio-quality';
+        $cmdParts[] = '0';
     }
 
-    $formatSelector = $audioSelector;
+    $formatSelector = 'bestaudio/best';
 
 } else {
-    $mergeOutputFormat = null;
-    if (defined('YTDLP_MERGE_OUTPUT_FORMAT') && is_string(YTDLP_MERGE_OUTPUT_FORMAT) && trim(YTDLP_MERGE_OUTPUT_FORMAT) !== '') {
-        $mergeOutputFormat = trim(YTDLP_MERGE_OUTPUT_FORMAT);
-    }
+    // Video: user-chosen container (mp4 default) + resolution cap from quality.
+    $allowedContainers = ['mp4', 'mkv', 'webm'];
+    $cont = in_array($container, $allowedContainers, true) ? $container : 'mp4';
 
-    $selectedAudioCodec = strtolower(trim((string) ($formatInfo['acodec'] ?? '')));
-    if ($selectedAudioCodec !== '' && $selectedAudioCodec !== 'none' && !is_mp4_compatible_audio_codec($selectedAudioCodec)) {
-        $mergeOutputFormat = 'mkv';
-    }
+    $height = ctype_digit((string) $quality) ? (int) $quality : 0;
+    $hcap = $height > 0 ? "[height<=?{$height}]" : '';
 
-    if ($mergeOutputFormat !== null) {
+    if ($cont === 'webm') {
+        // Prefer native webm-compatible streams (only offered by the UI when
+        // such streams exist); fall back to best at the cap without forcing a
+        // doomed remux of an h264 muxed file.
+        $formatSelector = "bv*{$hcap}[vcodec~='^(av01|vp0?9|vp8)']+ba[acodec~='^(opus|vorbis)']"
+            . "/bv*{$hcap}[vcodec~='^(av01|vp0?9|vp8)']+ba"
+            . "/b{$hcap}[ext=webm]/b{$hcap}/b";
         $cmdParts[] = '--merge-output-format';
-        $cmdParts[] = $mergeOutputFormat;
+        $cmdParts[] = 'webm';
+    } elseif ($cont === 'mkv') {
+        // MKV holds any codec; remux (no re-encode) guarantees the container.
+        $formatSelector = "bv*{$hcap}+ba/b{$hcap}/b";
+        $cmdParts[] = '--merge-output-format';
+        $cmdParts[] = 'mkv';
+        $cmdParts[] = '--remux-video';
+        $cmdParts[] = 'mkv';
+    } else { // mp4
+        // Prefer avc+aac (zero re-encode); otherwise merge/remux into mp4
+        // (modern codecs copy cleanly into mp4).
+        $formatSelector = "bv*{$hcap}[vcodec~='^(avc|h264)']+ba[acodec~='^(mp4a|aac)']"
+            . "/bv*{$hcap}+ba"
+            . "/b{$hcap}[ext=mp4]/b{$hcap}/b";
+        $cmdParts[] = '--merge-output-format';
+        $cmdParts[] = 'mp4';
+        $cmdParts[] = '--remux-video';
+        $cmdParts[] = 'mp4';
     }
 
-    if (!empty($formatInfo['video_id']) && !empty($formatInfo['audio_id'])) {
-        $videoId = (string) $formatInfo['video_id'];
-        $audioId = (string) $formatInfo['audio_id'];
-
-        if (!is_valid_format_id($videoId) || !is_valid_format_id($audioId)) {
-            json_response(['status' => 'error', 'message' => 'Format ID tidak valid'], 400);
-        }
-
-        $formatSelector = $videoId . '+' . $audioId;
-        $expectsMerge = true;
-
-    } elseif ($formatId !== '') {
-        if (!is_valid_format_id($formatId)) {
-            json_response(['status' => 'error', 'message' => 'Format ID tidak valid'], 400);
-        }
-
-        $selectorAlreadyCombined = strpos($formatId, '+') !== false;
-        $selectorHasAudio = format_has_audio($formatInfo);
-        $isExplicitMuxed = $formatType === 'muxed';
-
-        if ($selectorAlreadyCombined) {
-            $formatSelector = $formatId;
-            $expectsMerge = true;
-        } elseif (!$isExplicitMuxed && ($formatType === 'video' || !$selectorHasAudio)) {
-            // Video-only id should be paired with best available audio to avoid silent output.
-            $formatSelector = $formatId . '+bestaudio/' . $formatId . '/best';
-            $expectsMerge = true;
-        } else {
-            $formatSelector = $formatId;
-        }
-
-    } else {
-        $formatSelector = 'bestvideo[height<=?2160]+bestaudio/best';
-        $expectsMerge = true;
-    }
+    $expectsMerge = true;
 }
 
 if ($formatType !== 'image') {
@@ -231,6 +224,8 @@ $metadata = [
     'format_id' => $formatId,
     'format' => $formatType,
     'quality' => $quality,
+    'container' => $formatType === 'video' ? $container : null,
+    'audio_format' => $formatType === 'audio' ? $audioFormat : null,
     'format_selector' => $formatSelector,
     'expects_merge' => $expectsMerge,
     'title' => (string) ($formatInfo['title'] ?? ''),

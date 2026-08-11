@@ -258,52 +258,88 @@ function displayVideoInfo(data) {
     resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// Output formats offered to the user. Edit these arrays to add/remove choices.
+const VIDEO_CONTAINERS = ['mp4', 'mkv', 'webm'];          // order = display order
+const AUDIO_FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'];
+const CONTAINER_LABEL = { mp4: 'MP4', mkv: 'MKV', webm: 'WEBM' };
+const AUDIO_LABEL = { mp3: 'MP3', m4a: 'M4A', opus: 'OPUS', flac: 'FLAC', wav: 'WAV' };
+
+// WEBM can only hold VP8/VP9/AV1 video. Detect whether a source stream qualifies
+// so we only offer WEBM where it actually works (no doomed remux of h264).
+function isWebmCapableVcodec(vcodec) {
+    return /(?:^|[^a-z])(vp0?9|vp8|av01)/i.test(String(vcodec || ''));
+}
+
+// Friendly resolution label from pixel height (4K / 2K / 1080p / ...).
+function resolutionLabel(height, fallback) {
+    const h = parseInt(height, 10) || 0;
+    if (h >= 2160) return '4K';
+    if (h >= 1440) return '2K';
+    if (h >= 1080) return '1080p';
+    if (h >= 720) return '720p';
+    if (h >= 480) return '480p';
+    if (h >= 360) return '360p';
+    if (h >= 240) return '240p';
+    if (h > 0) return `${h}p`;
+    return fallback && fallback !== 'Unknown' ? fallback : 'Best';
+}
+
 function buildQualityOptions(data) {
-    const candidates = [];
-    const seenFormatIds = new Set();
+    const options = [];
 
-    const addOption = (format, fallbackType = 'video') => {
-        if (!format || !format.format_id) return;
-        const formatId = String(format.format_id);
-        if (seenFormatIds.has(formatId)) return;
-        seenFormatIds.add(formatId);
+    // ---- VIDEO: one entry per (resolution × enabled container) ----
+    const videoFormats = (data.available_formats || []).filter(f => f && isVideoOption(f));
 
-        const type = format.type || fallbackType;
-        const ext = (format.ext || (type === 'audio' ? 'mp3' : (type === 'image' ? 'zip' : 'mp4'))).toUpperCase();
-        const resolution = format.resolution || (format.height ? `${format.height}p` : 'Best');
-        const bitrate = parseFloat(format.bitrate) || parseFloat(format.abr) || 0;
-
-        let label = `${resolution} (${ext})`;
-        if (type === 'audio') {
-            label = `Musik MP3${bitrate ? ` - ${Math.round(bitrate)}kbps` : ''}`;
-        } else if (type === 'image') {
-            label = 'Gambar ZIP';
+    // Group by height so each resolution appears once, tracking the widest
+    // variant and whether a webm-capable codec exists at that resolution.
+    const groups = new Map();
+    videoFormats.forEach(f => {
+        const height = parseInt(f.height, 10) || 0;
+        const width = parseInt(f.width, 10) || 0;
+        let g = groups.get(height);
+        if (!g) {
+            g = { height, width, resolution: f.resolution || (height ? `${height}p` : 'Best'), webm: false };
+            groups.set(height, g);
         }
+        if (width > g.width) g.width = width;
+        if ((!g.resolution || g.resolution === 'Unknown') && f.resolution) g.resolution = f.resolution;
+        if (isWebmCapableVcodec(f.vcodec)) g.webm = true;
+    });
 
-        candidates.push({
-            ...format,
-            type,
-            label
+    Array.from(groups.values())
+        .sort((a, b) => (b.height - a.height))
+        .forEach(g => {
+            // Quality is named by the shorter side so portrait clips read "720p"
+            // not "1280p"; the real pixel height still drives the backend filter.
+            const qualityDim = (g.width > 0 && g.height > 0) ? Math.min(g.width, g.height) : g.height;
+            const resLabel = resolutionLabel(qualityDim, g.resolution);
+            VIDEO_CONTAINERS.forEach(container => {
+                if (container === 'webm' && !g.webm) return; // only when feasible
+                options.push({
+                    type: 'video',
+                    container,
+                    height: g.height,
+                    width: g.width,
+                    resolution: resLabel,
+                    format_id: '',
+                    label: `${resLabel} · ${CONTAINER_LABEL[container]}`,
+                });
+            });
         });
-    };
 
-    (data.available_formats || []).forEach(format => addOption(format, format.type || 'video'));
-    (data.audio_formats || []).forEach(format => addOption({ ...format, type: 'audio' }, 'audio'));
-    const hasKnownVideo = candidates.some(format => isVideoOption(format) && getVideoQualityKey(format) !== 'unknown');
-    const compactOptions = [];
-    const seenOptionKeys = new Set();
-
-    candidates
-        .filter(format => !(hasKnownVideo && isVideoOption(format) && getVideoQualityKey(format) === 'unknown'))
-        .sort(compareQualityOptions)
-        .forEach(format => {
-            const key = getCompactOptionKey(format);
-            if (seenOptionKeys.has(key)) return;
-            seenOptionKeys.add(key);
-            compactOptions.push(format);
+    // ---- AUDIO: one entry per enabled audio format ----
+    if ((data.audio_formats || []).length > 0) {
+        AUDIO_FORMATS.forEach(audioFormat => {
+            options.push({
+                type: 'audio',
+                audio_format: audioFormat,
+                format_id: '',
+                label: `Musik · ${AUDIO_LABEL[audioFormat]}`,
+            });
         });
+    }
 
-    return compactOptions;
+    return options;
 }
 
 function buildImageOptions(data) {
@@ -531,6 +567,8 @@ async function startDownload() {
     formData.append('format_id', downloadManager.selectedFormat.format_id);
     formData.append('format_type', downloadManager.selectedFormat.type || 'video');
     formData.append('quality', downloadManager.selectedFormat.height || 'best');
+    formData.append('container', downloadManager.selectedFormat.container || 'mp4');
+    formData.append('audio_format', downloadManager.selectedFormat.audio_format || 'mp3');
     const selectedFormatData = { ...downloadManager.selectedFormat };
     if (downloadManager.videoData && downloadManager.videoData.title) {
         selectedFormatData.title = downloadManager.videoData.title;
