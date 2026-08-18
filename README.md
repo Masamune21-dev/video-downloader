@@ -1,122 +1,35 @@
-# 🎬 Video Downloader (PHP Native + yt-dlp)
+# 🎬 Video Downloader (Full Python FastAPI + yt-dlp)
 
-A **lightweight video downloader web application** built with **native PHP** running on **Apache**, powered by **yt-dlp** as the backend engine.
+A **high-performance, modern video downloader web application** built with **Python 3 (FastAPI & Uvicorn)**, powered by **yt-dlp** and native direct media resolvers.
 
-This project allows you to download videos and audio from **YouTube, TikTok, Instagram, Facebook, and 100+ supported platforms** with quality up to **4K (2160p)** — **without using any PHP framework**.
+This project allows you to download videos, audio, and photo albums from **YouTube, TikTok, Bilibili, Instagram, Facebook, and 100+ supported platforms** with quality up to **4K (2160p)**.
 
-Designed for **VPS and self-hosted servers**, focusing on **performance, simplicity, full control**, and a playful **DL-chan comic / neo-brutal UI**.
+Designed for **VPS and self-hosted servers**, focusing on **performance, native async streaming, zero legacy PHP overhead**, and a playful **DL-chan comic / neo-brutal UI**.
 
 ---
 
 ## ✨ Features
 
-- 🎬 Download videos from **100+ platforms**
-- 🎧 Video & audio formats (**MP4, MP3, WebM, MKV**)
+- 🎬 Download videos from **100+ platforms** (YouTube, TikTok, Bilibili, Instagram, Twitter/X, etc.)
+- 🎧 Audio extraction (**MP3, M4A, Opus, FLAC, WAV**)
 - 📺 Quality up to **4K / Ultra HD**
-- 🖼️ Image post selection and ZIP download when supported
-- ⚡ Fast server-side processing
+- 🖼️ TikTok Photo Slideshow picker & batch ZIP downloader
+- ⚡ **Pure Python Async Backend (FastAPI + Uvicorn)**
+- 🚀 HTTP Range streaming support (pause & resume download)
+- 🧹 Automated background sweeper (auto-deletes temporary files after 10 minutes)
 - 🔒 No user data stored
-- 🎨 DL-chan inspired **comic neo-brutal UI**
-- 🖱️ Custom comic cursor for default and clickable states
-- ✨ Lightweight UI animations: pop-in, button pop, platform wiggle, loading shimmer, and click sparkle
+- 🎨 DL-chan inspired **comic neo-brutal UI** with Glassmorphism
 - 📱 Responsive layout for desktop and mobile
-- ♾️ Unlimited downloads *(server-dependent)*
 
 ---
 
 ## 🧰 Tech Stack
 
-- **PHP (Native, no framework)**
-- **Apache Web Server**
-- **yt-dlp**
-- **HTML5 / CSS3 / JavaScript**
-- **Font Awesome** icons
-- **Toastify JS** notifications
-- **FFmpeg** *(recommended for merging streams)*
-
----
-
-## 📋 Server Requirements
-
-Make sure your server meets the following requirements:
-
-- Linux *(Ubuntu / Debian recommended)*
-- Apache **2.x**
-- PHP **8.0+**
-- Python **3.8+**
-- **yt-dlp**
-- **ffmpeg** *(highly recommended)*
-
----
-
-## 🔧 Installation Guide
-
-### 1️⃣ Clone the Repository
-```bash
-git clone https://github.com/Masamune21-dev/video-downloader.git
-cd video-downloader
-```
-
-### 2️⃣ Install yt-dlp
-```bash
-sudo apt update
-sudo apt install -y python3 python3-pip
-sudo pip3 install -U yt-dlp
-```
-
-- Verify installation:
-```bash
-yt-dlp --version
-```
-
-### 3️⃣ Install FFmpeg (Recommended)
-```bash
-sudo apt install -y ffmpeg
-```
-
-### 4️⃣ Check PHP & Apache
-```bash
-php -v
-sudo systemctl status apache2
-```
-
-- Make sure PHP CLI and Apache are running correctly.
-
-### 5️⃣ Application Configuration
-
-- Copy the example configuration file:
-```bash
-cp app/config/config.example.php app/config/config.php
-```
-- Edit `app/config/config.php` to match your environment (app name, paths, limits, etc).
-
-Optional (subfolder deploy):
-- If you run this app under a subfolder (example: `https://yourdomain.com/video-downloader/`) set:
-  - `APP_BASE_PATH=/video-downloader`
-
-### 6️⃣ Set Permissions (Important)
-```bash
-sudo chown -R www-data:www-data /var/www/video-downloader/storage
-sudo chmod -R 775 /var/www/video-downloader/storage
-```
-Notes:
-- Download files, progress logs, and yt-dlp cache are stored under `storage/temp/`.
-- Keep `storage/` writable by your web server user.
-
-### 7️⃣ Access via Browser
-Important:
-- Set Apache `DocumentRoot` to the `public/` folder (recommended and required for best security).
-
-Examples:
-- Local:
-
-```arduino
-http://localhost/video-downloader
-```
-- Domain:
-```arduino
-https://yourdomain.com/video-downloader
-```
+- **Python 3.10+ (FastAPI, Uvicorn, httpx, jinja2, aiofiles)**
+- **yt-dlp + Deno (EJS solver) + curl_cffi**
+- **FFmpeg** *(stream merging & audio conversion)*
+- **HTML5 / CSS3 / Vanilla JavaScript**
+- **PM2 Process Manager & Nginx Reverse Proxy**
 
 ---
 
@@ -124,128 +37,52 @@ https://yourdomain.com/video-downloader
 
 ```text
 video-downloader/
-├── app/
-│   ├── bootstrap.php
-│   ├── config/
-│   │   ├── config.php
-│   │   └── config.example.php
-│   ├── http/
-│   └── jobs/
+├── main.py                # FastAPI main application & API routes
+├── templates/
+│   └── index.html         # Jinja2 template with comic neo-brutal UI
 ├── public/
-│   ├── .htaccess
-│   ├── index.php
-│   ├── download.php
-│   ├── api/
-│   └── assets/
-│       ├── favicon.ico
+│   └── assets/            # Static files (CSS, JS, images, icons)
 │       ├── css/
 │       ├── js/
 │       └── img/
 ├── storage/
-│   └── temp/
+│   └── temp/              # Temporary download buffers & progress logs
 └── README.md
 ```
 
 ---
 
-## ⚙️ How It Works
+## 🔧 Installation & Running
 
-- User submits a video URL
-
-- PHP validates the input
-
-- PHP executes yt-dlp via CLI to analyze metadata and formats
-
-- yt-dlp fetches available video, audio, or image formats
-
-- User selects quality, audio, or image options in the UI
-
-- Selected format is downloaded, merged, or packaged
-
-- File is served to the user
-
-- Progress is reported through polling and shown in the comic-styled progress modal
-
----
-
-
-### 🛡️ Security Notes
-
-- Set `DocumentRoot` to `public/` so `app/` and `storage/` are not accessible from the web
-
-- Never expose sensitive files publicly:
-  - `app/config/config.php`
-  - `cookies.txt`
-
-- Restrict internal directories using `.htaccess` (already included for `public/` and `storage/temp/`)
-
-- Use HTTPS (recommended)
-
-- Limit file size and execution time
-
-- Validate all user input
-
----
-
-## ⚠️ Legal Disclaimer
-
-- This project is intended for educational and personal use only.
-
-- You are responsible for complying with:
-
-- Copyright laws
-
-- Platform terms of service
-
-- The developer is NOT responsible for misuse of this application.
-
----
-
-## 🧪 Troubleshooting
-### ❌ yt-dlp not found
+### 1️⃣ Setup Virtual Environment & Dependencies
 ```bash
-which yt-dlp
-```
-- If missing:
-```bash
-sudo pip3 install -U yt-dlp
+python3 -m venv venv
+source venv/bin/activate
+pip install fastapi uvicorn yt-dlp jinja2 aiofiles python-multipart httpx "curl_cffi==0.15.0"
 ```
 
-### ❌ Permission denied
+### 2️⃣ Run with Uvicorn / PM2
 ```bash
-sudo chown -R www-data:www-data video-downloader
-sudo chmod -R 755 video-downloader
+# Development / Standalone:
+python3 main.py
+
+# Production with PM2:
+pm2 start main.py --name "vid-masamune" --interpreter ./venv/bin/python
 ```
 
-### ❌ 500 Internal Server Error
-- Check Apache error log:
-```bash
-sudo tail -f /var/log/apache2/error.log
-```
-
-### ❌ UI changes not visible
-- The app appends `filemtime()` versions to CSS and JS assets.
-- If the browser still shows old styling, hard refresh the page:
-```bash
-Ctrl + F5
+### 3️⃣ Nginx Reverse Proxy Configuration
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3007;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
 ```
 
 ---
 
 ## 📜 License
 - This project is provided as-is for learning and personal use.
-
-- You are free to modify and adapt it for your own environment.
-
----
-
-## 🤝 Contributing
-Contributions are welcome!
-
-- Fork the repository
-- Create a new branch
-- Commit your changes
-- Open a Pull Request
-
-## ⭐ Support
-If this project helps you, consider giving it a ⭐ on GitHub!

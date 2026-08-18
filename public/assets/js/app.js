@@ -131,7 +131,7 @@ async function handleFormSubmit(e) {
     document.getElementById('loading').style.display = 'block';
 
     try {
-        const response = await fetch(API_BASE + 'api/index.php?action=analyze', {
+        const response = await fetch(API_BASE + 'api/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -576,7 +576,7 @@ async function startDownload() {
     formData.append('format_data', JSON.stringify(selectedFormatData));
 
     try {
-        const response = await fetch(API_BASE + 'api/index.php?action=download', {
+        const response = await fetch(API_BASE + 'api/download', {
             method: 'POST',
             body: formData
         });
@@ -615,7 +615,7 @@ function startProgressPolling(jobId) {
 
     downloadManager.progressInterval = setInterval(async () => {
         try {
-            const response = await fetch(API_BASE + `api/progress.php?id=${jobId}`);
+            const response = await fetch(API_BASE + `api/progress?id=${jobId}`);
             const data = await response.json();
 
             updateProgressUI(data);
