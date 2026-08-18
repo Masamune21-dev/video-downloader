@@ -171,14 +171,14 @@ function displayVideoInfo(data) {
 
     const qualityOptions = buildQualityOptions(data);
     const hasVideoOptions = qualityOptions.some(format => isVideoOption(format));
-    const imageOptions = hasVideoOptions ? [] : buildImageOptions(data);
+    const imageOptions = buildImageOptions(data);
     downloadManager.qualityOptions = qualityOptions;
     downloadManager.imageOptions = imageOptions;
 
-    downloadManager.selectedImageIndexes = (!hasVideoOptions && imageOptions.length > 0) ? [0] : [];
+    downloadManager.selectedImageIndexes = (imageOptions.length > 0) ? imageOptions.map((_, i) => i) : [];
     downloadManager.selectedFormat = downloadManager.selectedImageIndexes.length > 0
         ? buildSelectedImagesFormat()
-        : (qualityOptions[0] || imageOptions[0] || null);
+        : (qualityOptions[0] || null);
 
     const safeTitle = escapeHtml(data.title || 'Untitled Video');
     const safeThumbnail = escapeHtml(data.thumbnail || '');
