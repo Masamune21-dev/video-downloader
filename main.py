@@ -460,7 +460,7 @@ async def handle_analyze(url_raw: Optional[str]):
         "--no-warnings",
         "--no-playlist",
         "--remote-components", "ejs:github",
-        "--extractor-args", "youtube:player_client=android,mweb,web;player_skip=webpage,configs",
+        "--extractor-args", "youtube:player_client=android,web",
         "-J",
     ]
     if os.path.isfile(COOKIES_FILE):
@@ -705,7 +705,7 @@ async def handle_download(
         "--cache-dir", TEMP_CACHE,
         "--no-playlist",
         "--remote-components", "ejs:github",
-        "--extractor-args", "youtube:player_client=android,mweb,web;player_skip=webpage,configs",
+        "--extractor-args", "youtube:player_client=android,web",
         "--newline",
         "--progress",
         "--progress-template", progress_template,
@@ -714,8 +714,6 @@ async def handle_download(
         "--retries", "10",
         "--fragment-retries", "10",
         "--socket-timeout", "30",
-        "--concurrent-fragments", "8",
-        "--http-chunk-size", "10M",
     ]
     if os.path.isfile(COOKIES_FILE):
         cmd_parts.extend(["--cookies", COOKIES_FILE])
@@ -942,8 +940,19 @@ async def progress_check(request: Request, id: Optional[str] = Query(None)):
     if pid:
         pid_str = str(pid).strip()
         if pid_str == "999999":
-            # Background thread job
-            is_running = elapsed < 300 # Assume running unless finished or timeout
+            # Background thread job: cek status di progress_file
+            if os.path.isfile(progress_file):
+                try:
+                    with open(progress_file, "r", encoding="utf-8", errors="ignore") as pf:
+                        log_content = pf.read()
+                        if '"status":"finished"' in log_content or "ERROR:" in log_content:
+                            is_running = False
+                        else:
+                            is_running = elapsed < 300
+                except Exception:
+                    is_running = elapsed < 300
+            else:
+                is_running = elapsed < 300
         elif pid_str.isdigit():
             pid_int = int(pid_str)
             try:
@@ -971,13 +980,37 @@ async def progress_check(request: Request, id: Optional[str] = Query(None)):
             continue
         valid_finals.append(f)
 
+    # Saring kandidat berdasarkan ekstensi hasil yang DIMINTA job ini.
+    job_format = (meta.get("format") or "video").lower()
+    expected_exts = []
+    if job_format == "audio":
+        expected_exts = [(meta.get("audio_format") or "mp3").lower()]
+    elif job_format == "video":
+        expected_exts = [(meta.get("container") or "mp4").lower()]
+
+    if expected_exts:
+        preferred = []
+        for f in valid_finals:
+            b = os.path.basename(f).lower()
+            # Buang berkas antara yt-dlp yang belum tergabung / remux
+            if re.search(r"\.f\d+\.[a-z0-9]+$", b) or ".temp." in b:
+                continue
+            if any(b.endswith(f".{e}") for e in expected_exts):
+                preferred.append(f)
+
+        if preferred:
+            valid_finals = preferred
+        elif is_running:
+            # Hasil yang diminta belum ada dan proses masih bekerja — tunggu,
+            # jangan finalisasi berkas antara.
+            valid_finals = []
+
     if valid_finals:
-        # Check size stability
         valid_finals.sort(key=lambda x: os.path.getsize(x), reverse=True)
         completed_file = valid_finals[0]
 
-    # If completed file exists, finalize if process is not running or elapsed > 3s
-    if completed_file and (not is_running or elapsed > 3):
+    # Hanya finalisasi jika proses BENAR-BENAR telah selesai (bukan saat masih downloading/merging)
+    if completed_file and not is_running:
         # Rename to clean target name
         base_name = os.path.basename(completed_file)
         ext = base_name.split(".")[-1].lower()
