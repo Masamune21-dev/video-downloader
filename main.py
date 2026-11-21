@@ -106,20 +106,14 @@ def get_resolution_string(fmt: dict) -> str:
     h = fmt.get("height")
     if h:
         h = int(h)
-        if h >= 2160:
-            return "4K"
-        if h >= 1440:
-            return "2K"
-        if h >= 1080:
-            return "1080p"
-        if h >= 720:
-            return "720p"
-        if h >= 480:
-            return "480p"
-        if h >= 360:
-            return "360p"
+        for cap, label in ((2160, "4K"), (1440, "2K"), (1080, "1080p"), (720, "720p"), (480, "480p"), (360, "360p")):
+            if h >= cap:
+                return label
         return f"{h}p"
     return "Unknown"
+
+def _height_label(h: int) -> str:
+    return get_resolution_string({"height": h})
 
 def tiktok_user_agent() -> str:
     return ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
@@ -334,9 +328,148 @@ async def api_router(
         )
     return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid request action"})
 
-def fetch_tiktok_direct_api(url: str) -> Optional[dict]:
+def _tiktok_image_urls(item: dict) -> List[str]:
+    """Ambil daftar URL gambar dari itemStruct (post foto/slideshow)."""
+    out: List[str] = []
+    post = item.get("imagePost") or item.get("image_post_info") or {}
+    if not isinstance(post, dict):
+        return out
+    for img in post.get("images") or []:
+        if not isinstance(img, dict):
+            continue
+        for key in ("imageURL", "image_url", "display_image"):
+            node = img.get(key)
+            if isinstance(node, dict):
+                urls = node.get("urlList") or node.get("url_list") or []
+                if urls:
+                    out.append(urls[0])
+                    break
+    return out
+
+def _normalize_tiktok_item(video_detail: dict) -> Optional[dict]:
+    """Ubah payload video-detail TikTok (itemStruct) jadi bentuk ala tikwm API."""
+    status_code = video_detail.get("statusCode")
+    if status_code not in (None, 0):
+        return None
+    item = (video_detail.get("itemInfo") or {}).get("itemStruct") or {}
+    if not item.get("id"):
+        return None
+
+    video = item.get("video") or {}
+    author = item.get("author") or {}
+    music = item.get("music") or {}
+    stats = item.get("stats") or {}
+
+    play_url = video.get("playAddr") or video.get("downloadAddr")
+    download_url = video.get("downloadAddr") or play_url
+    images = _tiktok_image_urls(item)
+
     try:
-        resolved_url = expand_tiktok_short_url(url)
+        duration = int(float(video.get("duration") or item.get("duration") or 0))
+    except Exception:
+        duration = 0
+
+    return {
+        "id": str(item.get("id")),
+        "title": item.get("desc") or "TikTok Video",
+        "cover": video.get("originCover") or video.get("cover") or "",
+        "origin_cover": video.get("originCover") or video.get("cover") or "",
+        "duration": duration,
+        "play": play_url,
+        "hdplay": play_url or download_url,
+        "wmplay": download_url,
+        "size": 0,
+        "hd_size": 0,
+        "width": int(video.get("width") or 0),
+        "height": int(video.get("height") or 0),
+        "images": images,
+        "music_info": {
+            "title": music.get("title") or "Original Sound",
+            "play": music.get("playUrl") or "",
+        },
+        "author": {
+            "nickname": author.get("nickname") or author.get("uniqueId") or "TikTok Creator",
+            "unique_id": author.get("uniqueId") or "",
+        },
+        "play_count": int(stats.get("playCount") or 0),
+        "digg_count": int(stats.get("diggCount") or 0),
+    }
+
+def parse_tiktok_page_detail(html: str) -> Optional[dict]:
+    """Parse data video TikTok dari HTML halaman (format SSR baru & lama)."""
+    script_ids = ["api-data", "__UNIVERSAL_DATA_FOR_REHYDRATION__", "SIGI_STATE", "__NEXT_DATA__"]
+    for script_id in script_ids:
+        pattern = rf'<script[^>]+id=["\']{re.escape(script_id)}["\'][^>]*>(.*?)</script>'
+        for raw in re.findall(pattern, html, re.DOTALL | re.IGNORECASE):
+            try:
+                blob = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(blob, dict):
+                continue
+
+            video_detail = blob.get("videoDetail")
+            if not isinstance(video_detail, dict):
+                scope = blob.get("__DEFAULT_SCOPE__")
+                if isinstance(scope, dict):
+                    video_detail = scope.get("webapp.video-detail")
+            if not isinstance(video_detail, dict):
+                item_module = blob.get("ItemModule")
+                if isinstance(item_module, dict):
+                    first_item = next((v for v in item_module.values() if isinstance(v, dict)), None)
+                    if first_item:
+                        video_detail = {"statusCode": 0, "itemInfo": {"itemStruct": first_item}}
+            if not isinstance(video_detail, dict):
+                continue
+
+            normalized = _normalize_tiktok_item(video_detail)
+            if normalized:
+                return normalized
+    return None
+
+def fetch_tiktok_web_detail(url: str) -> Optional[dict]:
+    """Ambil detail video langsung dari halaman TikTok (tanpa API pihak ketiga)."""
+    target = normalize_tiktok_photo_url(url)
+    headers = {
+        "User-Agent": tiktok_user_agent(),
+        "Referer": "https://www.tiktok.com/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        with httpx.Client(follow_redirects=True, timeout=15.0, headers=headers) as client:
+            resp = client.get(target)
+            if resp.status_code >= 400:
+                return None
+            detail = parse_tiktok_page_detail(resp.text)
+            if not detail:
+                # Retry sekali dengan kanal "web" (beberapa varian halaman butuh ini)
+                resp2 = client.get(
+                    target + ("&" if "?" in target else "?") + "is_from_webapp=1&sender_device=pc&lang=en"
+                )
+                if resp2.status_code < 400:
+                    detail = parse_tiktok_page_detail(resp2.text)
+            if not detail:
+                return None
+            # CDN TikTok menolak (403) tanpa cookie sesi halaman (tt_chain_token dll),
+            # jadi simpan cookie + UA untuk dipakai saat mengunduh media.
+            detail["_cookie_header"] = "; ".join(f"{c.name}={c.value}" for c in client.cookies.jar)
+            detail["_user_agent"] = headers["User-Agent"]
+            return detail
+    except Exception:
+        pass
+    return None
+
+def fetch_tiktok_direct_api(url: str) -> Optional[dict]:
+    resolved_url = expand_tiktok_short_url(url)
+
+    # 1) Sumber utama: halaman TikTok sendiri (paling stabil, tanpa API key)
+    web_detail = fetch_tiktok_web_detail(resolved_url)
+    if web_detail:
+        return web_detail
+
+    # 2) Fallback: API pihak ketiga (tikwm) bila halaman gagal di-parse
+    try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         }
@@ -411,14 +544,23 @@ async def handle_analyze(url_raw: Optional[str]):
                     "bitrate": 0,
                 })
             elif play_url:
+                vid_h = int(tt_data.get("height") or 0)
+                vid_w = int(tt_data.get("width") or 0)
+                if not vid_h:
+                    vid_h = 1080
+                if not vid_w:
+                    vid_w = int(round(vid_h * 9 / 16))
+                hd_size = int(tt_data.get("hd_size") or tt_data.get("size") or 0)
+                sd_size = int(tt_data.get("size") or 0)
+                disp_h = min(vid_w, vid_h) if vid_w and vid_h else vid_h
                 available_formats.append({
                     "format_id": "tiktok_hd",
                     "ext": "mp4",
-                    "resolution": "1080p",
-                    "height": 1080,
-                    "width": 1920,
-                    "filesize": format_size(int(tt_data.get("hd_size") or tt_data.get("size") or 0)),
-                    "filesize_bytes": int(tt_data.get("hd_size") or tt_data.get("size") or 0),
+                    "resolution": _height_label(disp_h),
+                    "height": disp_h,
+                    "width": vid_w,
+                    "filesize": format_size(hd_size) if hd_size else "Unknown",
+                    "filesize_bytes": hd_size,
                     "vcodec": "h264",
                     "acodec": "aac",
                     "note": "HD No Watermark",
@@ -429,11 +571,11 @@ async def handle_analyze(url_raw: Optional[str]):
                 available_formats.append({
                     "format_id": "tiktok_sd",
                     "ext": "mp4",
-                    "resolution": "720p",
+                    "resolution": _height_label(720),
                     "height": 720,
                     "width": 1280,
-                    "filesize": format_size(int(tt_data.get("size") or 0)),
-                    "filesize_bytes": int(tt_data.get("size") or 0),
+                    "filesize": format_size(sd_size) if sd_size else "Unknown",
+                    "filesize_bytes": sd_size,
                     "vcodec": "h264",
                     "acodec": "aac",
                     "note": "Standard Quality",
@@ -771,7 +913,12 @@ async def handle_download(
                 with open(progress_file, "w", encoding="utf-8") as pf:
                     pf.write('download:[vd-progress] {"status":"downloading","percent":10,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
 
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"}
+                headers = {
+                    "User-Agent": tt_data.get("_user_agent") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Referer": "https://www.tiktok.com/",
+                }
+                if tt_data.get("_cookie_header"):
+                    headers["Cookie"] = tt_data["_cookie_header"]
 
                 if format_type == "audio":
                     music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music") or tt_data.get("play")
@@ -1010,7 +1157,12 @@ async def handle_download(
                     indexes = list(range(len(img_urls)))
 
                 downloaded_files = []
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"}
+                headers = {
+                    "User-Agent": tt_data.get("_user_agent") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Referer": "https://www.tiktok.com/",
+                }
+                if tt_data.get("_cookie_header"):
+                    headers["Cookie"] = tt_data["_cookie_header"]
                 with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
                     for s_idx in indexes:
                         if 0 <= s_idx < len(img_urls):
