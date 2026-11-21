@@ -868,6 +868,7 @@ async def handle_download(
 
                     audio_tmp = os.path.join(TEMP_FILES, f"{job_id}_slideshow_audio.tmp")
                     has_audio = False
+                    audio_duration = 0.0
                     if music_url:
                         try:
                             with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
@@ -878,26 +879,43 @@ async def handle_download(
                                     has_audio = True
                         except Exception:
                             pass
+                    if has_audio:
+                        try:
+                            probe = subprocess.run(
+                                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                 "-of", "default=noprint_wrappers=1:nokey=1", audio_tmp],
+                                capture_output=True, text=True, timeout=30,
+                            )
+                            audio_duration = float((probe.stdout or "").strip() or 0)
+                        except Exception:
+                            audio_duration = 0.0
 
                     with open(progress_file, "w", encoding="utf-8") as pf:
                         pf.write('download:[vd-progress] {"status":"processing","percent":70,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
 
                     concat_txt = os.path.join(TEMP_FILES, f"{job_id}_slideshow_concat.txt")
-                    duration_per_img = 3.0
+                    n_imgs = len(downloaded_imgs)
+                    # Durasi video mengikuti panjang musik agar tidak "mentok" beberapa detik.
+                    # Tanpa audio, pakai 3 detik per gambar.
+                    if has_audio and audio_duration > 0:
+                        duration_per_img = max(audio_duration / n_imgs, 1.5)
+                    else:
+                        duration_per_img = 3.0
+                    total_duration = min(duration_per_img * n_imgs, 300.0)
+
                     with open(concat_txt, "w", encoding="utf-8") as f:
                         for ip in downloaded_imgs:
                             f.write(f"file '{ip}'\n")
-                            f.write(f"duration {duration_per_img}\n")
+                            f.write(f"duration {duration_per_img:.3f}\n")
                         f.write(f"file '{downloaded_imgs[-1]}'\n")
-
-                    total_duration = len(downloaded_imgs) * duration_per_img
 
                     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt]
                     if has_audio:
                         cmd.extend(["-stream_loop", "-1", "-i", audio_tmp])
-                    cmd.extend(["-t", str(total_duration)])
+                    cmd.extend(["-t", f"{total_duration:.3f}"])
                     cmd.extend([
-                        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p",
+                        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p",
+                        "-r", "30",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
                     ])
                     if has_audio:
