@@ -14,6 +14,7 @@ Designed for **VPS and self-hosted servers**, focusing on **performance, native 
 - 🎧 Audio extraction (**MP3, M4A, Opus, FLAC, WAV**)
 - 📺 Quality up to **4K / Ultra HD**
 - 🖼️ TikTok Photo Slideshow picker & batch ZIP downloader
+- 🎞️ TikTok Photo → MP4 video slideshow (images + music) and music-only (MP3/M4A/Opus/FLAC/WAV)
 - ⚡ **Pure Python Async Backend (FastAPI + Uvicorn)**
 - 🚀 HTTP Range streaming support (pause & resume download)
 - 🧹 Automated background sweeper (auto-deletes temporary files after 10 minutes)
