@@ -187,9 +187,9 @@ function displayVideoInfo(data) {
 
     const selectedIsImage = downloadManager.selectedFormat && downloadManager.selectedFormat.type === 'image';
     const selectOptionsHtml = qualityOptions.length
-        ? `${imageOptions.length ? '<option value="">Pilih gambar di bawah</option>' : ''}${qualityOptions.map((format, index) =>
+        ? `${imageOptions.length ? '<option value="">Gambar (Pilih di bawah)</option>' : ''}${qualityOptions.map((format, index) =>
             `<option value="${index}">${escapeHtml(format.label || 'Best Quality')}</option>`).join('')}`
-        : '<option value="">Pilih gambar di bawah</option>';
+        : '<option value="">Gambar (Pilih di bawah)</option>';
     const imagePickerHtml = buildImagePickerHtml(imageOptions);
 
     const html = `
@@ -313,18 +313,31 @@ function buildQualityOptions(data) {
             // not "1280p"; the real pixel height still drives the backend filter.
             const qualityDim = (g.width > 0 && g.height > 0) ? Math.min(g.width, g.height) : g.height;
             const resLabel = resolutionLabel(qualityDim, g.resolution);
-            VIDEO_CONTAINERS.forEach(container => {
-                if (container === 'webm' && !g.webm) return; // only when feasible
+            const isSlideshow = (data.image_formats && data.image_formats.length > 0);
+            if (isSlideshow) {
                 options.push({
                     type: 'video',
-                    container,
+                    container: 'mp4',
                     height: g.height,
                     width: g.width,
                     resolution: resLabel,
-                    format_id: '',
-                    label: `${resLabel} · ${CONTAINER_LABEL[container]}`,
+                    format_id: 'tiktok_slideshow',
+                    label: `Video Slideshow (${resLabel}) · MP4`,
                 });
-            });
+            } else {
+                VIDEO_CONTAINERS.forEach(container => {
+                    if (container === 'webm' && !g.webm) return; // only when feasible
+                    options.push({
+                        type: 'video',
+                        container,
+                        height: g.height,
+                        width: g.width,
+                        resolution: resLabel,
+                        format_id: '',
+                        label: `${resLabel} · ${CONTAINER_LABEL[container]}`,
+                    });
+                });
+            }
         });
 
     // ---- AUDIO: one entry per enabled audio format ----
@@ -437,7 +450,17 @@ function getExtensionScore(ext) {
 }
 
 function handleQualitySelect(indexValue) {
-    if (indexValue === '') return;
+    if (indexValue === '') {
+        if (downloadManager.imageOptions && downloadManager.imageOptions.length > 0) {
+            if (!downloadManager.selectedImageIndexes || downloadManager.selectedImageIndexes.length === 0) {
+                downloadManager.selectedImageIndexes = downloadManager.imageOptions.map((_, i) => i);
+            }
+            downloadManager.selectedFormat = buildSelectedImagesFormat();
+            updateDownloadButton();
+            refreshImageSelectionUI();
+        }
+        return;
+    }
 
     const index = parseInt(indexValue, 10);
     if (!Array.isArray(downloadManager.qualityOptions) || Number.isNaN(index)) return;
@@ -462,12 +485,15 @@ function handleImageToggle(indexValue, checked) {
     else selectedSet.delete(index);
 
     downloadManager.selectedImageIndexes = Array.from(selectedSet).sort((a, b) => a - b);
-    downloadManager.selectedFormat = downloadManager.selectedImageIndexes.length > 0
-        ? buildSelectedImagesFormat()
-        : (downloadManager.qualityOptions[0] || null);
-
-    const qualitySelect = document.getElementById('qualitySelect');
-    if (qualitySelect) qualitySelect.value = downloadManager.selectedImageIndexes.length > 0 ? '' : '0';
+    if (downloadManager.selectedImageIndexes.length > 0) {
+        downloadManager.selectedFormat = buildSelectedImagesFormat();
+        const qualitySelect = document.getElementById('qualitySelect');
+        if (qualitySelect) qualitySelect.value = '';
+    } else {
+        downloadManager.selectedFormat = downloadManager.qualityOptions[0] || null;
+        const qualitySelect = document.getElementById('qualitySelect');
+        if (qualitySelect) qualitySelect.value = '0';
+    }
 
     updateDownloadButton();
     refreshImageSelectionUI();
@@ -512,14 +538,15 @@ function updateDownloadButton() {
 
     downloadBtn.disabled = false;
     const type = downloadManager.selectedFormat.type || 'video';
-    const icon = type === 'audio' ? 'fa-music' : (type === 'image' ? 'fa-images' : 'fa-download');
+    const isSlideshow = (downloadManager.imageOptions && downloadManager.imageOptions.length > 0);
+    const icon = type === 'audio' ? 'fa-music' : (type === 'image' ? 'fa-images' : (isSlideshow ? 'fa-video' : 'fa-download'));
     const imageNumber = parseInt(downloadManager.selectedFormat.image_number, 10) || 0;
     const selectedCount = parseInt(downloadManager.selectedFormat.selected_count, 10) || downloadManager.selectedImageIndexes.length || 0;
     const text = type === 'audio'
         ? 'Download Musik'
         : (type === 'image'
             ? (selectedCount > 1 ? `Download ${selectedCount} Gambar` : `Download Gambar${imageNumber ? ` ${imageNumber}` : ''}`)
-            : 'Download');
+            : (isSlideshow ? 'Download Video Slideshow' : 'Download Video'));
 
     downloadBtn.innerHTML = `<i class="fas ${icon}"></i> <span>${text}</span>`;
 }

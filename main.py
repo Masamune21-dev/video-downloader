@@ -393,9 +393,24 @@ async def handle_analyze(url_raw: Optional[str]):
                         "note": "Image only",
                     })
 
-            # Video HD and Standard (only if not a photo slideshow)
+            # Video HD and Standard, or Slideshow video if images present
             play_url = tt_data.get("hdplay") or tt_data.get("play")
-            if play_url and not images:
+            if images:
+                available_formats.append({
+                    "format_id": "tiktok_slideshow",
+                    "ext": "mp4",
+                    "resolution": "1080p",
+                    "height": 1080,
+                    "width": 1920,
+                    "filesize": "Video Slideshow",
+                    "filesize_bytes": 0,
+                    "vcodec": "h264",
+                    "acodec": "aac",
+                    "note": "Slideshow MP4",
+                    "type": "muxed",
+                    "bitrate": 0,
+                })
+            elif play_url:
                 available_formats.append({
                     "format_id": "tiktok_hd",
                     "ext": "mp4",
@@ -427,7 +442,7 @@ async def handle_analyze(url_raw: Optional[str]):
                     "direct_url": tt_data.get("play") or play_url,
                 })
 
-            music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music")
+            music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music") or tt_data.get("play")
             if music_url:
                 audio_formats.append({
                     "format_id": "tiktok_audio",
@@ -641,6 +656,31 @@ async def handle_analyze(url_raw: Optional[str]):
                 "filesize_bytes": 0,
                 "note": "Image only",
             })
+        if extracted_imgs and not available_formats:
+            available_formats.append({
+                "format_id": "tiktok_slideshow",
+                "ext": "mp4",
+                "resolution": "1080p",
+                "height": 1080,
+                "width": 1920,
+                "filesize": "Video Slideshow",
+                "filesize_bytes": 0,
+                "vcodec": "h264",
+                "acodec": "aac",
+                "note": "Slideshow MP4",
+                "type": "muxed",
+                "bitrate": 0,
+            })
+        if extracted_imgs and not audio_formats:
+            audio_formats.append({
+                "format_id": "tiktok_audio",
+                "ext": "mp3",
+                "filesize": "Audio",
+                "bitrate": "320kbps",
+                "acodec": "mp3",
+                "type": "audio",
+                "note": "Original Sound",
+            })
 
     thumbnail_url = str(data.get("thumbnail") or "")
     if not thumbnail_url and data.get("thumbnails"):
@@ -724,44 +764,196 @@ async def handle_download(
     if "tiktok.com" in raw_url.lower() and (format_type in ["video", "audio"] or format_id.startswith("tiktok_")):
         def run_tiktok_download():
             try:
-                title = sanitize_filename(format_info.get("title", "tiktok_video"), 120)
+                title = sanitize_filename(format_info.get("title", "tiktok_media"), 120)
                 tt_data = fetch_tiktok_direct_api(raw_url) or {}
-                
-                download_stream_url = None
-                target_ext = "mp4"
+                images = tt_data.get("images") or extract_tiktok_images(raw_url) or extract_tiktok_images(download_url) or []
+
+                with open(progress_file, "w", encoding="utf-8") as pf:
+                    pf.write('download:[vd-progress] {"status":"downloading","percent":10,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"}
+
                 if format_type == "audio":
-                    download_stream_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music")
-                    target_ext = "mp3"
+                    music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music") or tt_data.get("play")
+                    if not music_url:
+                        try:
+                            with httpx.Client(headers=headers, follow_redirects=True, timeout=15.0) as client:
+                                r_page = client.get(raw_url)
+                                m_matches = re.findall(r'"playUrl":"([^"]+)"', r_page.text)
+                                if m_matches:
+                                    music_url = m_matches[0].encode().decode("unicode_escape")
+                        except Exception:
+                            pass
+
+                    if not music_url:
+                        raise Exception("Gagal mendapatkan link audio TikTok")
+
+                    audio_fmt = audio_format if audio_format in ["mp3", "m4a", "opus", "flac", "wav"] else "mp3"
+                    target_file = os.path.join(TEMP_FILES, f"{job_id}_{title}.{audio_fmt}")
+                    temp_audio = os.path.join(TEMP_FILES, f"{job_id}_raw_audio.tmp")
+
+                    with httpx.Client(follow_redirects=True, headers=headers, timeout=60.0) as client:
+                        with client.stream("GET", music_url) as resp:
+                            total_bytes = int(resp.headers.get("content-length", 0))
+                            downloaded_b = 0
+                            with open(temp_audio, "wb") as f_out:
+                                for chunk in resp.iter_bytes(chunk_size=128 * 1024):
+                                    if chunk:
+                                        f_out.write(chunk)
+                                        downloaded_b += len(chunk)
+                                        pct = (downloaded_b / total_bytes * 50.0 + 10.0) if total_bytes > 0 else 50.0
+                                        with open(progress_file, "w", encoding="utf-8") as pf:
+                                            pf.write(f'download:[vd-progress] {{"status":"downloading","percent":{round(pct,1)},"downloaded":{downloaded_b},"total":{total_bytes},"total_est":{total_bytes},"speed":0,"eta":0}}\n')
+
+                    with open(progress_file, "w", encoding="utf-8") as pf:
+                        pf.write('download:[vd-progress] {"status":"processing","percent":85,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+
+                    cmd = ["ffmpeg", "-y", "-i", temp_audio]
+                    if audio_fmt == "mp3":
+                        cmd.extend(["-c:a", "libmp3lame", "-b:a", "192k"])
+                    elif audio_fmt in ["m4a", "aac"]:
+                        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+                    elif audio_fmt == "opus":
+                        cmd.extend(["-c:a", "libopus", "-b:a", "128k"])
+                    elif audio_fmt == "flac":
+                        cmd.extend(["-c:a", "flac"])
+                    elif audio_fmt == "wav":
+                        cmd.extend(["-c:a", "pcm_s16le"])
+                    cmd.append(target_file)
+
+                    res = subprocess.run(cmd, capture_output=True)
+                    if os.path.isfile(temp_audio):
+                        try:
+                            os.remove(temp_audio)
+                        except Exception:
+                            pass
+
+                    if res.returncode != 0 or not os.path.isfile(target_file):
+                        raise Exception("Gagal memproses file audio")
+
+                    with open(progress_file, "w", encoding="utf-8") as pf:
+                        pf.write('download:[vd-progress] {"status":"finished","percent":100,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+
+                elif images:
+                    # Video Slideshow from images + music
+                    target_ext = container if container in ["mp4", "mkv", "webm"] else "mp4"
+                    target_file = os.path.join(TEMP_FILES, f"{job_id}_{title}.{target_ext}")
+
+                    downloaded_imgs = []
+                    with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
+                        for s_idx, img_url in enumerate(images):
+                            img_target = os.path.join(TEMP_FILES, f"{job_id}_slide_{str(s_idx).zfill(3)}.jpg")
+                            r = client.get(img_url)
+                            if r.status_code == 200:
+                                with open(img_target, "wb") as f:
+                                    f.write(r.content)
+                                downloaded_imgs.append(img_target)
+                            pct = 10.0 + ((s_idx + 1) / len(images) * 45.0)
+                            with open(progress_file, "w", encoding="utf-8") as pf:
+                                pf.write(f'download:[vd-progress] {{"status":"downloading","percent":{round(pct,1)},"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}}\n')
+
+                    if not downloaded_imgs:
+                        raise Exception("Gagal mengunduh gambar untuk slideshow")
+
+                    music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music") or tt_data.get("play")
+                    if not music_url:
+                        try:
+                            with httpx.Client(headers=headers, follow_redirects=True, timeout=15.0) as client:
+                                r_page = client.get(raw_url)
+                                m_matches = re.findall(r'"playUrl":"([^"]+)"', r_page.text)
+                                if m_matches:
+                                    music_url = m_matches[0].encode().decode("unicode_escape")
+                        except Exception:
+                            pass
+
+                    audio_tmp = os.path.join(TEMP_FILES, f"{job_id}_slideshow_audio.tmp")
+                    has_audio = False
+                    if music_url:
+                        try:
+                            with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
+                                r_aud = client.get(music_url)
+                                if r_aud.status_code == 200 and len(r_aud.content) > 1000:
+                                    with open(audio_tmp, "wb") as f:
+                                        f.write(r_aud.content)
+                                    has_audio = True
+                        except Exception:
+                            pass
+
+                    with open(progress_file, "w", encoding="utf-8") as pf:
+                        pf.write('download:[vd-progress] {"status":"processing","percent":70,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+
+                    concat_txt = os.path.join(TEMP_FILES, f"{job_id}_slideshow_concat.txt")
+                    duration_per_img = 3.0
+                    with open(concat_txt, "w", encoding="utf-8") as f:
+                        for ip in downloaded_imgs:
+                            f.write(f"file '{ip}'\n")
+                            f.write(f"duration {duration_per_img}\n")
+                        f.write(f"file '{downloaded_imgs[-1]}'\n")
+
+                    total_duration = len(downloaded_imgs) * duration_per_img
+
+                    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt]
+                    if has_audio:
+                        cmd.extend(["-stream_loop", "-1", "-i", audio_tmp])
+                    cmd.extend(["-t", str(total_duration)])
+                    cmd.extend([
+                        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                    ])
+                    if has_audio:
+                        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+                    cmd.extend(["-pix_fmt", "yuv420p"])
+                    if target_ext == "mp4":
+                        cmd.extend(["-movflags", "+faststart"])
+                    cmd.append(target_file)
+
+                    res = subprocess.run(cmd, capture_output=True)
+
+                    for ip in downloaded_imgs:
+                        try:
+                            os.remove(ip)
+                        except Exception:
+                            pass
+                    for fp in [concat_txt, audio_tmp]:
+                        try:
+                            if os.path.exists(fp):
+                                os.remove(fp)
+                        except Exception:
+                            pass
+
+                    if res.returncode != 0 or not os.path.isfile(target_file):
+                        raise Exception("Gagal membuat video slideshow TikTok")
+
+                    with open(progress_file, "w", encoding="utf-8") as pf:
+                        pf.write('download:[vd-progress] {"status":"finished","percent":100,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+
                 else:
+                    # Regular TikTok video
                     if format_id == "tiktok_sd":
                         download_stream_url = tt_data.get("play") or tt_data.get("hdplay")
                     else:
                         download_stream_url = tt_data.get("hdplay") or tt_data.get("play")
 
-                if not download_stream_url:
-                    raise Exception("Gagal mendapatkan link download TikTok")
+                    if not download_stream_url:
+                        raise Exception("Gagal mendapatkan link download TikTok")
 
-                target_file = os.path.join(TEMP_FILES, f"{job_id}_{title}.{target_ext}")
-                
-                with open(progress_file, "w", encoding="utf-8") as pf:
-                    pf.write('download:[vd-progress] {"status":"downloading","percent":10,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+                    target_file = os.path.join(TEMP_FILES, f"{job_id}_{title}.mp4")
 
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"}
-                with httpx.Client(follow_redirects=True, headers=headers, timeout=60.0) as client:
-                    with client.stream("GET", download_stream_url) as resp:
-                        total_bytes = int(resp.headers.get("content-length", 0))
-                        downloaded_b = 0
-                        with open(target_file, "wb") as f_out:
-                            for chunk in resp.iter_bytes(chunk_size=128 * 1024):
-                                if chunk:
-                                    f_out.write(chunk)
-                                    downloaded_b += len(chunk)
-                                    pct = (downloaded_b / total_bytes * 100.0) if total_bytes > 0 else 50.0
-                                    with open(progress_file, "w", encoding="utf-8") as pf:
-                                        pf.write(f'download:[vd-progress] {{"status":"downloading","percent":{round(pct,1)},"downloaded":{downloaded_b},"total":{total_bytes},"total_est":{total_bytes},"speed":0,"eta":0}}\n')
+                    with httpx.Client(follow_redirects=True, headers=headers, timeout=60.0) as client:
+                        with client.stream("GET", download_stream_url) as resp:
+                            total_bytes = int(resp.headers.get("content-length", 0))
+                            downloaded_b = 0
+                            with open(target_file, "wb") as f_out:
+                                for chunk in resp.iter_bytes(chunk_size=128 * 1024):
+                                    if chunk:
+                                        f_out.write(chunk)
+                                        downloaded_b += len(chunk)
+                                        pct = (downloaded_b / total_bytes * 100.0) if total_bytes > 0 else 50.0
+                                        with open(progress_file, "w", encoding="utf-8") as pf:
+                                            pf.write(f'download:[vd-progress] {{"status":"downloading","percent":{round(pct,1)},"downloaded":{downloaded_b},"total":{total_bytes},"total_est":{total_bytes},"speed":0,"eta":0}}\n')
 
-                with open(progress_file, "w", encoding="utf-8") as pf:
-                    pf.write('download:[vd-progress] {"status":"finished","percent":100,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
+                    with open(progress_file, "w", encoding="utf-8") as pf:
+                        pf.write('download:[vd-progress] {"status":"finished","percent":100,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
 
             except Exception as e:
                 with open(progress_file, "w", encoding="utf-8") as pf:
@@ -1142,7 +1334,13 @@ async def progress_check(request: Request, id: Optional[str] = Query(None)):
 
     msg = "Mendownload..."
     if status_str == "processing":
-        msg = "Menyiapkan gambar..." if meta.get("format") == "image" else "Menggabungkan video dan audio..."
+        job_fmt = meta.get("format")
+        if job_fmt == "image":
+            msg = "Menyiapkan gambar..."
+        elif job_fmt == "audio":
+            msg = "Memproses audio..."
+        else:
+            msg = "Menggabungkan video dan audio..."
     elif status_str == "finished":
         msg = "Download selesai!"
     elif status_str == "error":
