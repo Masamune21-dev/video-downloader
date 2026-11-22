@@ -216,6 +216,59 @@ def extract_tiktok_images(url: str) -> List[str]:
     except Exception:
         return []
 
+def probe_media_duration(path: str) -> float:
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=30,
+        )
+        return float((probe.stdout or "").strip() or 0)
+    except Exception:
+        return 0.0
+
+def build_slideshow_cmd(images: List[str], audio_path: Optional[str], target_file: str,
+                        target_ext: str = "mp4", duration_per_img: float = 3.0,
+                        total_duration: float = 0.0) -> List[str]:
+    """Susun perintah ffmpeg untuk menggabungkan gambar jadi video slideshow.
+
+    Catatan penting: demuxer `-f concat` berhenti di gambar pertama bila resolusi/aspek
+    antar gambar berbeda (umum pada post foto TikTok) dan ffmpeg tetap exit 0, sehingga
+    slideshow hanya berisi 1 gambar. Karena itu tiap gambar dijadikan input terpisah,
+    di-scale sendiri ke kanvas 1080x1920, lalu digabung lewat filter `concat`.
+    """
+    n_imgs = len(images)
+    if not n_imgs:
+        raise ValueError("Tidak ada gambar untuk slideshow")
+
+    cmd = ["ffmpeg", "-y"]
+    for img in images:
+        cmd.extend(["-loop", "1", "-t", f"{duration_per_img:.3f}", "-i", img])
+    if audio_path:
+        cmd.extend(["-stream_loop", "-1", "-i", audio_path])
+
+    norm = ("scale=1080:1920:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p")
+    filt_parts = [
+        f"[{i}:v]{norm},trim=duration={duration_per_img:.3f},setpts=PTS-STARTPTS[v{i}]"
+        for i in range(n_imgs)
+    ]
+    filt_parts.append(f"{''.join(f'[v{i}]' for i in range(n_imgs))}concat=n={n_imgs}:v=1:a=0[vout]")
+
+    cmd.extend(["-filter_complex", ";".join(filt_parts), "-map", "[vout]"])
+    if audio_path:
+        cmd.extend(["-map", f"{n_imgs}:a", "-c:a", "aac", "-b:a", "192k"])
+    cmd.extend([
+        "-t", f"{(total_duration or duration_per_img * n_imgs):.3f}",
+        "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+        "-pix_fmt", "yuv420p",
+    ])
+    if target_ext == "mp4":
+        cmd.extend(["-movflags", "+faststart"])
+    cmd.append(target_file)
+    return cmd
+
 def sanitize_filename(title: str, max_len: int = 100) -> str:
     # Only remove illegal filesystem characters, preserve Unicode letters and digits
     title = re.sub(r'[\\/*?:"<>|]+', '_', title.strip())
@@ -328,23 +381,33 @@ async def api_router(
         )
     return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid request action"})
 
-def _tiktok_image_urls(item: dict) -> List[str]:
-    """Ambil daftar URL gambar dari itemStruct (post foto/slideshow)."""
-    out: List[str] = []
+def _tiktok_image_url_lists(item: dict) -> List[List[str]]:
+    """Ambil kandidat URL gambar per foto dari itemStruct (post foto/slideshow).
+
+    TikTok memberi beberapa host alternatif (p16/p19/...) untuk gambar yang sama,
+    jadi semuanya disimpan agar bisa dicoba satu per satu saat mengunduh.
+    """
+    out: List[List[str]] = []
     post = item.get("imagePost") or item.get("image_post_info") or {}
     if not isinstance(post, dict):
         return out
     for img in post.get("images") or []:
         if not isinstance(img, dict):
             continue
+        urls: List[str] = []
         for key in ("imageURL", "image_url", "display_image"):
             node = img.get(key)
             if isinstance(node, dict):
-                urls = node.get("urlList") or node.get("url_list") or []
-                if urls:
-                    out.append(urls[0])
-                    break
+                for url in (node.get("urlList") or node.get("url_list") or []):
+                    if url and url not in urls:
+                        urls.append(url)
+        if urls:
+            out.append(urls)
     return out
+
+def _tiktok_image_urls(item: dict) -> List[str]:
+    """Ambil daftar URL gambar dari itemStruct (post foto/slideshow)."""
+    return [urls[0] for urls in _tiktok_image_url_lists(item)]
 
 def _normalize_tiktok_item(video_detail: dict) -> Optional[dict]:
     """Ubah payload video-detail TikTok (itemStruct) jadi bentuk ala tikwm API."""
@@ -362,7 +425,8 @@ def _normalize_tiktok_item(video_detail: dict) -> Optional[dict]:
 
     play_url = video.get("playAddr") or video.get("downloadAddr")
     download_url = video.get("downloadAddr") or play_url
-    images = _tiktok_image_urls(item)
+    image_candidates = _tiktok_image_url_lists(item)
+    images = [urls[0] for urls in image_candidates]
 
     try:
         duration = int(float(video.get("duration") or item.get("duration") or 0))
@@ -383,6 +447,7 @@ def _normalize_tiktok_item(video_detail: dict) -> Optional[dict]:
         "width": int(video.get("width") or 0),
         "height": int(video.get("height") or 0),
         "images": images,
+        "image_candidates": image_candidates,
         "music_info": {
             "title": music.get("title") or "Original Sound",
             "play": music.get("playUrl") or "",
@@ -987,20 +1052,44 @@ async def handle_download(
                     target_file = os.path.join(TEMP_FILES, f"{job_id}_{title}.{target_ext}")
 
                     downloaded_imgs = []
+                    image_jobs = [list(c) for c in (tt_data.get("image_candidates") or []) if c]
+                    if not image_jobs:
+                        image_jobs = [[u] for u in images]
+
+                    if not image_jobs:
+                        raise Exception("Gagal mendapatkan daftar gambar TikTok")
+
+                    failed_imgs = 0
                     with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
-                        for s_idx, img_url in enumerate(images):
+                        for s_idx, url_list in enumerate(image_jobs):
                             img_target = os.path.join(TEMP_FILES, f"{job_id}_slide_{str(s_idx).zfill(3)}.jpg")
-                            r = client.get(img_url)
-                            if r.status_code == 200:
-                                with open(img_target, "wb") as f:
-                                    f.write(r.content)
+                            saved = False
+                            for attempt in range(2):
+                                for candidate_url in url_list:
+                                    try:
+                                        r = client.get(candidate_url)
+                                    except Exception:
+                                        continue
+                                    if r.status_code == 200 and len(r.content) > 1024:
+                                        with open(img_target, "wb") as f:
+                                            f.write(r.content)
+                                        saved = True
+                                        break
+                                if saved:
+                                    break
+                            if saved:
                                 downloaded_imgs.append(img_target)
-                            pct = 10.0 + ((s_idx + 1) / len(images) * 45.0)
+                            else:
+                                failed_imgs += 1
+                            pct = 10.0 + ((s_idx + 1) / len(image_jobs) * 45.0)
                             with open(progress_file, "w", encoding="utf-8") as pf:
                                 pf.write(f'download:[vd-progress] {{"status":"downloading","percent":{round(pct,1)},"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}}\n')
 
                     if not downloaded_imgs:
                         raise Exception("Gagal mengunduh gambar untuk slideshow")
+                    if failed_imgs:
+                        with open(progress_file, "a", encoding="utf-8") as pf:
+                            pf.write(f'# {failed_imgs} gambar gagal diunduh, slideshow memakai {len(downloaded_imgs)} gambar\n')
 
                     music_url = tt_data.get("music_info", {}).get("play") or tt_data.get("music") or tt_data.get("play")
                     if not music_url:
@@ -1027,20 +1116,11 @@ async def handle_download(
                         except Exception:
                             pass
                     if has_audio:
-                        try:
-                            probe = subprocess.run(
-                                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                                 "-of", "default=noprint_wrappers=1:nokey=1", audio_tmp],
-                                capture_output=True, text=True, timeout=30,
-                            )
-                            audio_duration = float((probe.stdout or "").strip() or 0)
-                        except Exception:
-                            audio_duration = 0.0
+                        audio_duration = probe_media_duration(audio_tmp)
 
                     with open(progress_file, "w", encoding="utf-8") as pf:
                         pf.write('download:[vd-progress] {"status":"processing","percent":70,"downloaded":0,"total":0,"total_est":0,"speed":0,"eta":0}\n')
 
-                    concat_txt = os.path.join(TEMP_FILES, f"{job_id}_slideshow_concat.txt")
                     n_imgs = len(downloaded_imgs)
                     # Durasi video mengikuti panjang musik agar tidak "mentok" beberapa detik.
                     # Tanpa audio, pakai 3 detik per gambar.
@@ -1050,27 +1130,14 @@ async def handle_download(
                         duration_per_img = 3.0
                     total_duration = min(duration_per_img * n_imgs, 300.0)
 
-                    with open(concat_txt, "w", encoding="utf-8") as f:
-                        for ip in downloaded_imgs:
-                            f.write(f"file '{ip}'\n")
-                            f.write(f"duration {duration_per_img:.3f}\n")
-                        f.write(f"file '{downloaded_imgs[-1]}'\n")
-
-                    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt]
-                    if has_audio:
-                        cmd.extend(["-stream_loop", "-1", "-i", audio_tmp])
-                    cmd.extend(["-t", f"{total_duration:.3f}"])
-                    cmd.extend([
-                        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p",
-                        "-r", "30",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                    ])
-                    if has_audio:
-                        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-                    cmd.extend(["-pix_fmt", "yuv420p"])
-                    if target_ext == "mp4":
-                        cmd.extend(["-movflags", "+faststart"])
-                    cmd.append(target_file)
+                    cmd = build_slideshow_cmd(
+                        images=downloaded_imgs,
+                        audio_path=audio_tmp if has_audio else None,
+                        target_file=target_file,
+                        target_ext=target_ext,
+                        duration_per_img=duration_per_img,
+                        total_duration=total_duration,
+                    )
 
                     res = subprocess.run(cmd, capture_output=True)
 
@@ -1079,7 +1146,7 @@ async def handle_download(
                             os.remove(ip)
                         except Exception:
                             pass
-                    for fp in [concat_txt, audio_tmp]:
+                    for fp in [audio_tmp]:
                         try:
                             if os.path.exists(fp):
                                 os.remove(fp)
@@ -1149,9 +1216,14 @@ async def handle_download(
                 # Get images from direct API first, then scraper fallback
                 tt_data = fetch_tiktok_direct_api(raw_url) or {}
                 img_urls = tt_data.get("images") or extract_tiktok_images(raw_url) or extract_tiktok_images(download_url)
-                
+
                 if not img_urls:
                     raise Exception("Tidak ada gambar yang ditemukan untuk link ini")
+
+                # Kandidat URL per gambar (host alternatif) untuk retry saat 403/expired
+                img_candidates = [list(c) for c in (tt_data.get("image_candidates") or []) if c]
+                if len(img_candidates) != len(img_urls):
+                    img_candidates = [[u] for u in img_urls]
 
                 if not indexes:
                     indexes = list(range(len(img_urls)))
@@ -1166,13 +1238,17 @@ async def handle_download(
                 with httpx.Client(follow_redirects=True, headers=headers, timeout=30.0) as client:
                     for s_idx in indexes:
                         if 0 <= s_idx < len(img_urls):
-                            img_url = img_urls[s_idx]
                             target = os.path.join(TEMP_FILES, f"{job_id}_{title}_image_{str(s_idx+1).zfill(3)}.jpg")
-                            r = client.get(img_url)
-                            if r.status_code == 200:
-                                with open(target, "wb") as f:
-                                    f.write(r.content)
-                                downloaded_files.append(target)
+                            for candidate_url in img_candidates[s_idx]:
+                                try:
+                                    r = client.get(candidate_url)
+                                except Exception:
+                                    continue
+                                if r.status_code == 200 and len(r.content) > 1024:
+                                    with open(target, "wb") as f:
+                                        f.write(r.content)
+                                    downloaded_files.append(target)
+                                    break
 
                 if not downloaded_files:
                     raise Exception("Gagal mengunduh gambar TikTok")
